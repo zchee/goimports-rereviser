@@ -8,16 +8,16 @@
 
 ---
 
-# goimports-reviser [![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Right%20golang%20imports%20sorting%20and%20code%20formatting%20tool%20(goimports%20alternative)&url=https://github.com/incu6us/goimports-reviser&hashtags=golang,code,goimports-reviser,goimports,gofmt,developers)
+# goimports-rereviser [![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Right%20golang%20imports%20sorting%20and%20code%20formatting%20tool%20(goimports%20alternative)&url=https://github.com/zchee/goimports-rereviser&hashtags=golang,code,goimports-rereviser,goimports,gofmt,developers)
 [![#StandWithUkraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://vshymanskyy.github.io/StandWithUkraine)
-!['Status Badge'](https://github.com/incu6us/goimports-reviser/workflows/build/badge.svg)
-!['Release Badge'](https://github.com/incu6us/goimports-reviser/workflows/release/badge.svg)
-!['Quality Badge'](https://goreportcard.com/badge/github.com/incu6us/goimports-reviser)
-[![codecov](https://codecov.io/gh/incu6us/goimports-reviser/branch/master/graph/badge.svg)](https://codecov.io/gh/incu6us/goimports-reviser)
-![GitHub All Releases](https://img.shields.io/github/downloads/incu6us/goimports-reviser/total?color=green)
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/incu6us/goimports-reviser?color=green)
-[![goimports-reviser](https://snapcraft.io//goimports-reviser/badge.svg)](https://snapcraft.io/goimports-reviser)
-![license](https://img.shields.io/github/license/incu6us/goimports-reviser)
+!['Status Badge'](https://github.com/zchee/goimports-rereviser/workflows/build/badge.svg)
+!['Release Badge'](https://github.com/zchee/goimports-rereviser/workflows/release/badge.svg)
+!['Quality Badge'](https://goreportcard.com/badge/github.com/zchee/goimports-rereviser)
+[![codecov](https://codecov.io/gh/incu6us/goimports-rereviser/branch/master/graph/badge.svg)](https://codecov.io/gh/incu6us/goimports-rereviser)
+![GitHub All Releases](https://img.shields.io/github/downloads/incu6us/goimports-rereviser/total?color=green)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/incu6us/goimports-rereviser?color=green)
+[![goimports-rereviser](https://snapcraft.io//goimports-rereviser/badge.svg)](https://snapcraft.io/goimports-rereviser)
+![license](https://img.shields.io/github/license/incu6us/goimports-rereviser)
 [![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go) 
 
 <a href="https://www.buymeacoffee.com/slavka" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;"></a>
@@ -34,21 +34,21 @@ Use additional options `-rm-unused` to remove unused imports and `-set-alias` to
 ## Configuration:
 ### Cmd
 ```bash
-goimports-reviser -rm-unused -set-alias -format ./reviser/reviser.go
+goimports-rereviser -rm-unused -set-alias -format ./reviser/reviser.go
 ```
 
 You can also apply rules to a dir or recursively apply using ./... as a target:
 ```bash
-goimports-reviser -rm-unused -set-alias -format -recursive reviser
+goimports-rereviser -rm-unused -set-alias -format -recursive reviser
 ```
 
 ```bash
-goimports-reviser -rm-unused -set-alias -format ./...
+goimports-rereviser -rm-unused -set-alias -format ./...
 ```
 
 You can also apply rules to multiple targets:
 ```bash
-goimports-reviser -rm-unused -set-alias -format ./reviser/reviser.go ./pkg/...
+goimports-rereviser -rm-unused -set-alias -format ./reviser/reviser.go ./pkg/...
 ```
 
 ### Example, to configure it with JetBrains IDEs (via file watcher plugin):
@@ -57,7 +57,7 @@ goimports-reviser -rm-unused -set-alias -format ./reviser/reviser.go ./pkg/...
 
 ### Options:
 ```text
-Usage of goimports-reviser:
+Usage of goimports-rereviser:
   -apply-to-generated-files
     	Apply imports sorting and formatting(if the option is set) to generated files. Generated file is a file with first comment which starts with comment '// Code generated'. Optional parameter.
   -company-prefixes string
@@ -78,13 +78,13 @@ Usage of goimports-reviser:
     	dotted - imports with "." alias.
     	Optional parameter. (default "std,general,company,project")
   -list-diff
-    	Option will list files whose formatting differs from goimports-reviser. Optional parameter.
+    	Option will list files whose formatting differs from goimports-rereviser. Optional parameter.
   -local string
     	Deprecated
   -output string
     	Can be "file", "write" or "stdout". Whether to write the formatted content back to the file or to stdout. When "write" together with "-list-diff" will list the file name and write back to the file. Optional parameter. (default "file")
   -project-name string
-    	Your project name(ex.: github.com/incu6us/goimports-reviser). Optional parameter.
+    	Your project name(ex.: github.com/zchee/goimports-rereviser). Optional parameter.
   -recursive
     	Apply rules recursively if target is a directory. In case of ./... execution will be recursively applied by default. Optional parameter.
   -rm-unused
@@ -104,18 +104,18 @@ Usage of goimports-reviser:
 ## Install
 ### With Go
 ```bash
-go install -v github.com/incu6us/goimports-reviser/v3@latest
+go install -v github.com/zchee/goimports-rereviser/v3@latest
 ```
 
 ### With Brew
 ```bash
 brew tap incu6us/homebrew-tap
-brew install incu6us/homebrew-tap/goimports-reviser
+brew install incu6us/homebrew-tap/goimports-rereviser
 ```
 
 ### With Snap
 ```bash
-snap install goimports-reviser
+snap install goimports-rereviser
 ```
 
 ## Examples
@@ -126,7 +126,7 @@ package testdata
 import (
 	"log"
 
-	"github.com/incu6us/goimports-reviser/testdata/innderpkg"
+	"github.com/zchee/goimports-rereviser/testdata/innderpkg"
 
 	"bytes"
 
@@ -144,7 +144,7 @@ import (
 
 	"golang.org/x/exp/slices"
 
-	"github.com/incu6us/goimports-reviser/testdata/innderpkg"
+	"github.com/zchee/goimports-rereviser/testdata/innderpkg"
 )
 ```
 
@@ -162,28 +162,28 @@ import (
 Before usage:
 
 ```go
-package testdata // goimports-reviser/testdata
+package testdata // goimports-rereviser/testdata
 
 import (
 	"fmt" //fmt package
 	"golang.org/x/exp/slices" //custom package
-	"github.com/incu6us/goimports-reviser/pkg" // this is a company package which is not a part of the project, but is a part of your organization
-	"goimports-reviser/pkg"
+	"github.com/zchee/goimports-rereviser/pkg" // this is a company package which is not a part of the project, but is a part of your organization
+	"goimports-rereviser/pkg"
 )
 ```
 
 After usage:
 ```go
-package testdata // goimports-reviser/testdata
+package testdata // goimports-rereviser/testdata
 
 import (
 	"fmt" // fmt package
 
 	"golang.org/x/exp/slices" // custom package
 
-	"github.com/incu6us/goimports-reviser/pkg" // this is a company package which is not a part of the project, but is a part of your organization
+	"github.com/zchee/goimports-rereviser/pkg" // this is a company package which is not a part of the project, but is a part of your organization
 
-	"goimports-reviser/pkg"
+	"goimports-rereviser/pkg"
 )
 ```
 
@@ -192,30 +192,30 @@ import (
 Before usage:
 
 ```go
-package testdata // goimports-reviser/testdata
+package testdata // goimports-rereviser/testdata
 
 import (
 	_ "github.com/pkg1"
 	. "github.com/pkg2"
 	"fmt" //fmt package
 	"golang.org/x/exp/slices" //custom package
-	"github.com/incu6us/goimports-reviser/pkg" // this is a company package which is not a part of the project, but is a part of your organization
-	"goimports-reviser/pkg"
+	"github.com/zchee/goimports-rereviser/pkg" // this is a company package which is not a part of the project, but is a part of your organization
+	"goimports-rereviser/pkg"
 )
 ```
 
 After usage:
 ```go
-package testdata // goimports-reviser/testdata
+package testdata // goimports-rereviser/testdata
 
 import (
 	"fmt" // fmt package
 
 	"golang.org/x/exp/slices" // custom package
 
-	"github.com/incu6us/goimports-reviser/pkg" // this is a company package which is not a part of the project, but is a part of your organization
+	"github.com/zchee/goimports-rereviser/pkg" // this is a company package which is not a part of the project, but is a part of your organization
 
-	"goimports-reviser/pkg"
+	"goimports-rereviser/pkg"
 
 	_ "github.com/pkg1"
 
@@ -250,11 +250,11 @@ func additionalTest(){
 Before usage:
 
 ```go
-package testdata // goimports-reviser/testdata
+package testdata // goimports-rereviser/testdata
 
 import (
 	"fmt"
-	"github.com/incu6us/goimports-reviser/pkg"
+	"github.com/zchee/goimports-rereviser/pkg"
 	extpkg "google.com/golang/pkg"
 	"golang.org/x/exp/slices"
 	extslice "github.com/PeterRK/slices"
@@ -263,12 +263,12 @@ import (
 
 After usage:
 ```go
-package testdata // goimports-reviser/testdata
+package testdata // goimports-rereviser/testdata
 
 import (
 	"fmt"
 
-	"github.com/incu6us/goimports-reviser/pkg"
+	"github.com/zchee/goimports-rereviser/pkg"
 	"golang.org/x/exp/slices"
 
 	extpkg "google.com/golang/pkg"
@@ -280,8 +280,8 @@ import (
 
 A big thank you to all the amazing people who contributed!
 
-<a href="https://github.com/incu6us/goimports-reviser/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=incu6us/goimports-reviser" />
+<a href="https://github.com/zchee/goimports-rereviser/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=incu6us/goimports-rereviser" />
 </a>
 
 ## Give a Star! ⭐
@@ -290,5 +290,5 @@ If you like or are using this project, please give it a **star**.
 
 ### Stargazers
 
-[![Stargazers over time](https://starchart.cc/incu6us/goimports-reviser.svg)](https://starchart.cc/incu6us/goimports-reviser)
+[![Stargazers over time](https://starchart.cc/incu6us/goimports-rereviser.svg)](https://starchart.cc/incu6us/goimports-rereviser)
 

@@ -15,8 +15,8 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/incu6us/goimports-reviser/v3/helper"
-	"github.com/incu6us/goimports-reviser/v3/reviser"
+	"github.com/zchee/goimports-rereviser/v4/helper"
+	"github.com/zchee/goimports-rereviser/v4/reviser"
 )
 
 const (
@@ -36,7 +36,7 @@ const (
 	applyToGeneratedFiles  = "apply-to-generated-files"
 	excludesArg            = "excludes"
 	// using a regex here so that this will work with forked repos (at least on github.com)
-	modulePathRegex  = `^github.com/[\w-]+/goimports-reviser(/v\d+)?@?`
+	modulePathRegex  = `^github.com/[\w-]+/goimports-rereviser(/v\d+)?@?`
 	separateNamedArg = "separate-named"
 
 	// Deprecated options
@@ -91,7 +91,7 @@ func init() {
 		&projectName,
 		projectNameArg,
 		"",
-		"Your project name(ex.: github.com/incu6us/goimports-reviser). Optional parameter.",
+		"Your project name(ex.: github.com/zchee/goimports-rereviser). Optional parameter.",
 	)
 
 	flag.StringVar(
@@ -132,7 +132,7 @@ Optional parameter.`,
 	listFileName = flag.Bool(
 		listDiffFileNameArg,
 		false,
-		"Option will list files whose formatting differs from goimports-reviser. Optional parameter.",
+		"Option will list files whose formatting differs from goimports-rereviser. Optional parameter.",
 	)
 
 	setExitStatus = flag.Bool(
@@ -298,7 +298,7 @@ func main() {
 	originPaths := flag.Args()
 
 	if filePath != "" {
-		deprecatedMessagesCh <- fmt.Sprintf("-%s is deprecated. Put file name(s) as last argument to the command(Example: goimports-reviser -rm-unused -set-alias -format goimports-reviser/main.go)", filePathArg)
+		deprecatedMessagesCh <- fmt.Sprintf("-%s is deprecated. Put file name(s) as last argument to the command(Example: goimports-rereviser -rm-unused -set-alias -format goimports-rereviser/main.go)", filePathArg)
 		originPaths = append(originPaths, filePath)
 	}
 
@@ -403,7 +403,7 @@ func main() {
 			if err != nil {
 				log.Fatalf("Failed to get current user: %+v\n", err)
 			}
-			cacheDir := path.Join(u.HomeDir, ".cache", "goimports-reviser")
+			cacheDir := path.Join(u.HomeDir, ".cache", "goimports-rereviser")
 			if err = os.MkdirAll(cacheDir, os.ModePerm); err != nil {
 				log.Fatalf("Failed to create cache directory: %+v\n", err)
 			}

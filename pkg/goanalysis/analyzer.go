@@ -8,8 +8,8 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	"github.com/incu6us/goimports-reviser/v3/pkg/module"
-	"github.com/incu6us/goimports-reviser/v3/reviser"
+	"github.com/zchee/goimports-rereviser/v4/pkg/module"
+	"github.com/zchee/goimports-rereviser/v4/reviser"
 )
 
 const errMessage = "imports must be formatted"
@@ -17,7 +17,7 @@ const errMessage = "imports must be formatted"
 func NewAnalyzer(flagSet *flag.FlagSet, localPkgPrefixes string, options ...reviser.SourceFileOption) *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Name:  "goimportsreviser",
-		Doc:   "goimports-reviser linter",
+		Doc:   "goimports-rereviser linter",
 		Run:   run(localPkgPrefixes, options...),
 		Flags: *flagSet,
 	}

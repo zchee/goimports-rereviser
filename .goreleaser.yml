@@ -1,7 +1,7 @@
 env:
   - GO111MODULE=on
   - CGO_ENABLED=0
-  - PROJECT_NAME=goimports-reviser
+  - PROJECT_NAME=goimports-rereviser
   - PROJECT_USER=incu6us
 
 version: 2
@@ -11,8 +11,8 @@ before:
     - go mod download
 
 builds:
-  - id: goimports-reviser-amd64
-    binary: goimports-reviser
+  - id: goimports-rereviser-amd64
+    binary: goimports-rereviser
     goos:
       - linux
     goarch:
@@ -21,8 +21,8 @@ builds:
     ldflags:
       - -s -w -X "main.Tag={{ .Tag }}" -X "main.Commit={{ .FullCommit }}" -X "main.SourceURL={{ .GitURL }}" -X "main.GoVersion={{ .Env.GO_VERSION }}"
 
-  - id: goimports-reviser-darwin-amd64
-    binary: goimports-reviser
+  - id: goimports-rereviser-darwin-amd64
+    binary: goimports-rereviser
     goos:
       - darwin
     goarch:
@@ -31,8 +31,8 @@ builds:
     ldflags:
       - -s -w -X "main.Tag={{ .Tag }}" -X "main.Commit={{ .FullCommit }}" -X "main.SourceURL={{ .GitURL }}" -X "main.GoVersion={{ .Env.GO_VERSION }}"
 
-  - id: goimports-reviser-windows-amd64
-    binary: goimports-reviser
+  - id: goimports-rereviser-windows-amd64
+    binary: goimports-rereviser
     goos:
       - windows
     goarch:
@@ -57,10 +57,10 @@ release:
   prerelease: auto
   github:
     owner: incu6us
-    name: goimports-reviser
+    name: goimports-rereviser
 
 brews:
-  - name: goimports-reviser
+  - name: goimports-rereviser
     repository:
       owner: incu6us
       name: homebrew-tap
@@ -69,15 +69,15 @@ brews:
       name: incu6us
       email: vyacheslavpryimak@gmail.com
     directory: Formula
-    homepage: "https://github.com/incu6us/goimports-reviser"
+    homepage: "https://github.com/zchee/goimports-rereviser"
     description: "Right imports sorting & code formatting tool"
     test: |
-      system "#{bin}/goimports-reviser -version"
+      system "#{bin}/goimports-rereviser -version"
     install: |
-      bin.install "goimports-reviser"
+      bin.install "goimports-rereviser"
 
 snapcrafts:
-  - id: goimports-reviser
+  - id: goimports-rereviser
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     publish: true
     summary: "Right imports sorting & code formatting tool"

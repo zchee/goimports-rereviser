@@ -49,8 +49,8 @@ build-lint-linux-arm64:
 
 .PHONY: build-macos-amd64
 build-macos-amd64:
-	GOOS=darwin GOARCH=amd64 go build -o bin/macos-amd64/goimports-reviser .
+	GOOS=darwin GOARCH=amd64 go build -o bin/macos-amd64/goimports-rereviser .
 
 .PHONY: update-std-package-list
 update-std-package-list:
-	@go run -tags gen github.com/incu6us/goimports-reviser/v3/pkg/std/gen
+	@go run -tags gen github.com/zchee/goimports-rereviser/v3/pkg/std/gen

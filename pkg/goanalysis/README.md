@@ -1,4 +1,4 @@
-goimports-reviser analyzer
+goimports-rereviser analyzer
 ---
 
 ### Build
