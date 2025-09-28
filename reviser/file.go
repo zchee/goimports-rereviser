@@ -16,8 +16,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/incu6us/goimports-reviser/v3/pkg/astutil"
-	"github.com/incu6us/goimports-reviser/v3/pkg/std"
+	"github.com/zchee/goimports-rereviser/v4/pkg/astutil"
+	"github.com/zchee/goimports-rereviser/v4/pkg/std"
 )
 
 const (

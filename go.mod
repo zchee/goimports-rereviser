@@ -1,4 +1,4 @@
-module github.com/incu6us/goimports-reviser/v3
+module github.com/zchee/goimports-rereviser/v4
 
 go 1.25
 

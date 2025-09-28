@@ -107,12 +107,12 @@ func main(){
 			want: false,
 		},
 		{
-			name: "success with github.com/incu6us/goimports-reviser/testdata/innderpkg",
+			name: "success with github.com/zchee/goimports-rereviser/testdata/innderpkg",
 			args: args{
 				fileData: `package main
 import(
 	"fmt"
-	"github.com/incu6us/goimports-reviser/testdata/innderpkg"
+	"github.com/zchee/goimports-rereviser/testdata/innderpkg"
 	"strconv"
 )
 
@@ -121,9 +121,9 @@ func main(){
 	fmt.Println(innderpkg.Something())
 }
 `,
-				path: "github.com/incu6us/goimports-reviser/testdata/innderpkg",
+				path: "github.com/zchee/goimports-rereviser/testdata/innderpkg",
 				packageImports: map[string]string{
-					"github.com/incu6us/goimports-reviser/testdata/innderpkg": "innderpkg",
+					"github.com/zchee/goimports-rereviser/testdata/innderpkg": "innderpkg",
 				},
 			},
 			want: true,
@@ -134,7 +134,7 @@ func main(){
 				fileData: `package main
 import(
 	"fmt"
-	"github.com/incu6us/goimports-reviser/testdata/innderpkg"
+	"github.com/zchee/goimports-rereviser/testdata/innderpkg"
 	"strconv"
 )
 
