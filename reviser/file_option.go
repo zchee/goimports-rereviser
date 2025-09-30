@@ -31,8 +31,8 @@ func WithCodeFormatting(f *SourceFile) error {
 // WithCompanyPackagePrefixes option for 3d group(by default), like inter-org or company package prefixes
 func WithCompanyPackagePrefixes(s string) SourceFileOption {
 	return func(f *SourceFile) error {
-		prefixes := strings.Split(s, stringValueSeparator)
-		for _, prefix := range prefixes {
+		prefixes := strings.SplitSeq(s, stringValueSeparator)
+		for prefix := range prefixes {
 			f.companyPackagePrefixes = append(f.companyPackagePrefixes, strings.TrimSpace(prefix))
 		}
 		return nil

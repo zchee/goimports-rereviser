@@ -48,8 +48,8 @@ func NewSourceDir(projectName string, path string, isRecursive bool, excludes st
 	}
 
 	if err == nil {
-		segs := strings.Split(excludes, ",")
-		for _, seg := range segs {
+		segs := strings.SplitSeq(excludes, ",")
+		for seg := range segs {
 			p := strings.TrimSpace(seg)
 			if p != "" {
 				if !filepath.IsAbs(p) {

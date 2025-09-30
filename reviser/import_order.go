@@ -2,6 +2,7 @@ package reviser
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -64,21 +65,11 @@ func (o ImportsOrders) sortImportsByOrder(importGroups *groupsImports) [][]strin
 }
 
 func (o ImportsOrders) hasBlankedImportOrder() bool {
-	for _, order := range o {
-		if order == BlankedImportsOrder {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(o, BlankedImportsOrder)
 }
 
 func (o ImportsOrders) hasDottedImportOrder() bool {
-	for _, order := range o {
-		if order == DottedImportsOrder {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(o, DottedImportsOrder)
 }
 
 func (o ImportsOrders) hasRequiredGroups() bool {
