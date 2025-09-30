@@ -25,9 +25,7 @@ const (
 	stringValueSeparator = ","
 )
 
-var (
-	codeGeneratedPattern = regexp.MustCompile(`^// Code generated .* DO NOT EDIT\.$`)
-)
+var codeGeneratedPattern = regexp.MustCompile(`^// Code generated .* DO NOT EDIT\.$`)
 
 // SourceFile main struct for fixing an existing code
 type SourceFile struct {

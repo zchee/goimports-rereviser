@@ -19,13 +19,9 @@ const (
 	recursivePath = "./..."
 )
 
-var (
-	currentPaths = []string{".", "." + string(filepath.Separator)}
-)
+var currentPaths = []string{".", "." + string(filepath.Separator)}
 
-var (
-	ErrPathIsNotDir = errors.New("path is not a directory")
-)
+var ErrPathIsNotDir = errors.New("path is not a directory")
 
 // SourceDir to validate and fix import
 type SourceDir struct {
@@ -35,7 +31,7 @@ type SourceDir struct {
 	excludePatterns []string // see filepath.Match
 }
 
-func NewSourceDir(projectName string, path string, isRecursive bool, excludes string) *SourceDir {
+func NewSourceDir(projectName, path string, isRecursive bool, excludes string) *SourceDir {
 	patterns := make([]string, 0)
 
 	// get the absolute path
