@@ -195,7 +195,6 @@ Optional parameter.`,
 		false,
 		"Show only the version string",
 	)
-
 }
 
 func printUsage() {

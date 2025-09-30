@@ -240,7 +240,7 @@ func TestUnformattedCollection_List(t *testing.T) {
 	tests := []struct {
 		name    string
 		init    func(t *testing.T) *UnformattedCollection
-		inspect func(r *UnformattedCollection, t *testing.T) //inspects receiver after test run
+		inspect func(r *UnformattedCollection, t *testing.T) // inspects receiver after test run
 
 		want1 []string
 	}{
@@ -250,7 +250,6 @@ func TestUnformattedCollection_List(t *testing.T) {
 				return newUnformattedCollection([]string{"1", "2"})
 			},
 			inspect: func(r *UnformattedCollection, t *testing.T) {
-
 			},
 			want1: []string{"1", "2"},
 		},
@@ -276,7 +275,7 @@ func TestUnformattedCollection_String(t *testing.T) {
 	tests := []struct {
 		name    string
 		init    func(t *testing.T) *UnformattedCollection
-		inspect func(r *UnformattedCollection, t *testing.T) //inspects receiver after test run
+		inspect func(r *UnformattedCollection, t *testing.T) // inspects receiver after test run
 		want    string
 	}{
 		{
@@ -285,7 +284,6 @@ func TestUnformattedCollection_String(t *testing.T) {
 				return newUnformattedCollection([]string{"1", "2"})
 			},
 			inspect: func(r *UnformattedCollection, t *testing.T) {
-
 			},
 			want: `1
 2`,
