@@ -1,19 +1,21 @@
-// Tool for Golang to sort goimports by 3-4 groups: std, general, local(which is optional) and project dependencies.
+// Tool goimports-rereviser for Golang to sort goimports by 3-4 groups: std, general, local(which is optional) and project dependencies.
 // It will help you to keep your code cleaner.
 //
 // Example:
+//
 //	goimports-rereviser -project-name github.com/zchee/goimports-rereviser -file-path ./reviser/reviser.go -rm-unused
 //
 // Input:
-// 	import (
+//
+//	import (
 //		"log"
 //
 //		"github.com/zchee/goimports-rereviser/testdata/innderpkg"
 //
 //		"bytes"
 //
-//		"golang.org/x/exp/slices"
-// 	)
+//		"golang.org/x/tools/go/packages"
+//	)
 //
 // Output:
 //
@@ -21,7 +23,7 @@
 //		"bytes"
 //		"log"
 //
-//		"golang.org/x/exp/slices"
+//		"golang.org/x/tools/go/packages"
 //
 //		"github.com/zchee/goimports-rereviser/testdata/innderpkg"
 //	 )
@@ -30,6 +32,5 @@
 //
 // More:
 //
-// 	goimports-rereviser -h
-//
+//	goimports-rereviser -h
 package main

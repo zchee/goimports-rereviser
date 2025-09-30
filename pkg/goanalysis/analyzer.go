@@ -23,8 +23,8 @@ func NewAnalyzer(flagSet *flag.FlagSet, localPkgPrefixes string, options ...revi
 	}
 }
 
-func run(localPkgPrefixes string, options ...reviser.SourceFileOption) func(pass *analysis.Pass) (interface{}, error) {
-	return func(pass *analysis.Pass) (interface{}, error) {
+func run(localPkgPrefixes string, options ...reviser.SourceFileOption) func(pass *analysis.Pass) (any, error) {
+	return func(pass *analysis.Pass) (any, error) {
 		inspect := func(formattedFile *ast.File, hasChanged bool) func(node ast.Node) bool {
 			return func(node ast.Node) bool {
 				file, ok := node.(*ast.File)
