@@ -7,9 +7,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
-
-	"golang.org/x/exp/slices"
 )
 
 type walkCallbackFunc = func(hasChanged bool, path string, content []byte) error

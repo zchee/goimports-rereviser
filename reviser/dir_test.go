@@ -3,10 +3,10 @@ package reviser
 import (
 	"os"
 	"path/filepath"
-	"reflect"
+	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/google/go-cmp/cmp"
 )
 
 const sep = string(os.PathSeparator)
@@ -14,10 +14,18 @@ const sep = string(os.PathSeparator)
 func TestNewSourceDir(t *testing.T) {
 	t.Run("should generate source dir from recursive path", func(tt *testing.T) {
 		dir := NewSourceDir("project", recursivePath, false, "")
-		assert.Equal(tt, "project", dir.projectName)
-		assert.NotContains(tt, dir.dir, "/...")
-		assert.Equal(tt, true, dir.isRecursive)
-		assert.Equal(tt, 0, len(dir.excludePatterns))
+		if diff := cmp.Diff("project", dir.projectName); diff != "" {
+			tt.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+		if strings.Contains(dir.dir, "/...") {
+			tt.Errorf("expected %q not to contain %q", dir.dir, "/...")
+		}
+		if diff := cmp.Diff(true, dir.isRecursive); diff != "" {
+			tt.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+		if diff := cmp.Diff(0, len(dir.excludePatterns)); diff != "" {
+			tt.Errorf("mismatch (-want +got):\n%s", diff)
+		}
 	})
 }
 
@@ -36,26 +44,40 @@ func main() {
 	exec := func(tt *testing.T, fn func(*testing.T) error) {
 		// create test file
 		err := os.MkdirAll(filepath.Dir(testFile), os.ModePerm)
-		assert.NoError(tt, err)
+		if err != nil {
+			tt.Errorf("unexpected error: %v", err)
+		}
 		err = os.WriteFile(testFile, []byte(originContent), os.ModePerm)
-		assert.NoError(tt, err)
+		if err != nil {
+			tt.Errorf("unexpected error: %v", err)
+		}
 
 		// exec test func
 		err = fn(tt)
-		assert.NoError(tt, err)
+		if err != nil {
+			tt.Errorf("unexpected error: %v", err)
+		}
 
 		// remove test file
 		err = os.Remove(testFile)
-		assert.NoError(tt, err)
+		if err != nil {
+			tt.Errorf("unexpected error: %v", err)
+		}
 	}
 	var sortedContent string
 	exec(t, func(tt *testing.T) error {
 		// get sorted content via SourceFile.Fix
 		sortedData, _, changed, err := NewSourceFile("testdata", testFile).Fix()
-		assert.NoError(tt, err)
+		if err != nil {
+			tt.Errorf("unexpected error: %v", err)
+		}
 		sortedContent = string(sortedData)
-		assert.Equal(tt, true, changed)
-		assert.NotEqual(tt, originContent, sortedContent)
+		if diff := cmp.Diff(true, changed); diff != "" {
+			tt.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+		if originContent == sortedContent {
+			tt.Errorf("expected content to be different")
+		}
 		return nil
 	})
 
@@ -100,11 +122,17 @@ func main() {
 			exec(tt, func(ttt *testing.T) error {
 				// executing SourceDir.Fix
 				err := NewSourceDir(test.args.project, test.args.path, true, test.args.excludes).Fix()
-				assert.NoError(tt, err)
+				if err != nil {
+					tt.Errorf("unexpected error: %v", err)
+				}
 				// read new content
 				content, err := os.ReadFile(testFile)
-				assert.NoError(tt, err)
-				assert.Equal(tt, test.want, string(content))
+				if err != nil {
+					tt.Errorf("unexpected error: %v", err)
+				}
+				if diff := cmp.Diff(test.want, string(content)); diff != "" {
+					tt.Errorf("mismatch (-want +got):\n%s", diff)
+				}
 				return nil
 			})
 		})
@@ -159,7 +187,9 @@ func TestSourceDir_IsExcluded(t *testing.T) {
 		args := test.args
 		t.Run(test.name, func(tt *testing.T) {
 			excluded := NewSourceDir(args.project, args.path, true, args.excludes).isExcluded(args.testPath)
-			assert.Equal(tt, test.want, excluded)
+			if diff := cmp.Diff(test.want, excluded); diff != "" {
+				tt.Errorf("mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }
@@ -180,25 +210,39 @@ func main() {
 	exec := func(tt *testing.T, fn func(*testing.T) error) {
 		// create test file
 		err := os.MkdirAll(filepath.Dir(testFile), os.ModePerm)
-		assert.NoError(tt, err)
+		if err != nil {
+			tt.Errorf("unexpected error: %v", err)
+		}
 		err = os.WriteFile(testFile, []byte(originContent), os.ModePerm)
-		assert.NoError(tt, err)
+		if err != nil {
+			tt.Errorf("unexpected error: %v", err)
+		}
 
 		// exec test func
 		err = fn(tt)
-		assert.NoError(tt, err)
+		if err != nil {
+			tt.Errorf("unexpected error: %v", err)
+		}
 
 		// remove test file
 		err = os.Remove(testFile)
-		assert.NoError(tt, err)
+		if err != nil {
+			tt.Errorf("unexpected error: %v", err)
+		}
 	}
 	var sortedContent string
 	exec(t, func(tt *testing.T) error {
 		sortedData, _, changed, err := NewSourceFile("testdata", testFile).Fix()
-		assert.NoError(tt, err)
+		if err != nil {
+			tt.Errorf("unexpected error: %v", err)
+		}
 		sortedContent = string(sortedData)
-		assert.Equal(tt, true, changed)
-		assert.NotEqual(tt, originContent, sortedContent)
+		if diff := cmp.Diff(true, changed); diff != "" {
+			tt.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+		if originContent == sortedContent {
+			tt.Errorf("expected content to be different")
+		}
 		return nil
 	})
 
@@ -222,14 +266,20 @@ func main() {
 		t.Run(test.name, func(tt *testing.T) {
 			exec(tt, func(ttt *testing.T) error {
 				files, err := NewSourceDir(test.args.project, test.args.path, true, test.args.excludes).Find()
-				assert.NoError(tt, err)
+				if err != nil {
+					tt.Errorf("unexpected error: %v", err)
+				}
 				rootPath, err := os.Getwd()
-				assert.NoError(tt, err)
+				if err != nil {
+					tt.Errorf("unexpected error: %v", err)
+				}
 				var want []string
 				for _, w := range test.want {
 					want = append(want, filepath.Join(rootPath, w))
 				}
-				assert.Equal(tt, want, files.List())
+				if diff := cmp.Diff(want, files.List()); diff != "" {
+					tt.Errorf("mismatch (-want +got):\n%s", diff)
+				}
 				return nil
 			})
 		})
@@ -264,8 +314,8 @@ func TestUnformattedCollection_List(t *testing.T) {
 				tt.inspect(receiver, t)
 			}
 
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("UnformattedCollection.List got1 = %v, want1: %v", got1, tt.want1)
+			if diff := cmp.Diff(tt.want1, got1); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -296,7 +346,9 @@ func TestUnformattedCollection_String(t *testing.T) {
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)
 			}
-			assert.Equal(t, tt.want, receiver.String())
+			if diff := cmp.Diff(tt.want, receiver.String()); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }

@@ -5,8 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/zchee/goimports-rereviser/v4/reviser"
 )
@@ -31,7 +30,9 @@ func TestDetermineProjectName(t *testing.T) {
 				projectName: "",
 				filePath: func() string {
 					dir, err := os.Getwd()
-					require.NoError(t, err)
+					if err != nil {
+						t.Fatalf("unexpected error: %v", err)
+					}
 					return dir
 				}(),
 				option: OSGetwdOption,
@@ -65,11 +66,17 @@ func TestDetermineProjectName(t *testing.T) {
 
 			got, err := DetermineProjectName(tt.args.projectName, tt.args.filePath, tt.args.option)
 			if tt.wantErr {
-				require.Error(t, err)
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
 				return
 			}
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }

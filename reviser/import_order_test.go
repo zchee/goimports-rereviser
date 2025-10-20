@@ -3,7 +3,7 @@ package reviser
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestStringToImportsOrder(t *testing.T) {
@@ -36,8 +36,12 @@ func TestStringToImportsOrder(t *testing.T) {
 
 			got, err := StringToImportsOrders(tt.args.importsOrder)
 
-			assert.Nil(t, got)
-			assert.EqualError(t, err, tt.wantErr)
+			if got != nil {
+				t.Errorf("expected nil, got: %v", got)
+			}
+			if err == nil || err.Error() != tt.wantErr {
+				t.Errorf("expected error %q, got %v", tt.wantErr, err)
+			}
 		})
 	}
 }
@@ -74,7 +78,10 @@ func Test_appendGroups(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equalf(t, tt.want, appendGroups(tt.args.input...), "appendGroups(%v)", tt.args)
+			got := appendGroups(tt.args.input...)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("appendGroups() mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }

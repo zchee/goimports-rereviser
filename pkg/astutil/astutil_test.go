@@ -6,8 +6,7 @@ import (
 	"go/token"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestUsesImport(t *testing.T) {
@@ -155,11 +154,15 @@ func main(){
 
 			fset := token.NewFileSet()
 			f, err := parser.ParseFile(fset, "", []byte(fileData), parser.ParseComments)
-			require.NoError(t, err)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
 			got := UsesImport(f, tt.args.packageImports, tt.args.path)
 
-			assert.Equal(t, tt.want, got)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }
@@ -214,16 +217,24 @@ func TestLoadPackageDeps(t *testing.T) {
 				nil,
 				parser.ParseComments,
 			)
-			require.NoError(t, err)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
 			got, err := LoadPackageDependencies(tt.args.dir, ParseBuildTag(f))
 			if tt.wantErr {
-				assert.Error(t, err)
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
 				return
 			}
 
-			assert.NoError(t, err)
-			assert.EqualValues(t, tt.want, got)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if diff := cmp.Diff(tt.want, map[string]string(got)); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }

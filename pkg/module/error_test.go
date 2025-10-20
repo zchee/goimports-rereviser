@@ -3,7 +3,7 @@ package module
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestPathIsNotSetError_Error(t *testing.T) {
@@ -23,7 +23,9 @@ func TestPathIsNotSetError_Error(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			e := &PathIsNotSetError{}
 			got := e.Error()
-			assert.Equal(t, tt.want, got)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }
@@ -44,7 +46,9 @@ func TestUndefinedModuleError_Error(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			e := &UndefinedModuleError{}
 			got := e.Error()
-			assert.Equal(t, tt.want, got)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }
