@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/ast"
 	"strings"
+	"sync"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -13,6 +14,27 @@ const (
 	buildTagPrefix           = "//go:build"
 	deprecatedBuildTagPrefix = "//+build"
 )
+
+// packageDepsCacheEntry represents a cached result for LoadPackageDependencies
+type packageDepsCacheEntry struct {
+	imports PackageImports
+	err     error
+}
+
+// packageDepsCacheKey is the cache key for package dependencies
+type packageDepsCacheKey struct {
+	dir      string
+	buildTag string
+}
+
+// packageDepsCache provides thread-safe caching for LoadPackageDependencies
+var packageDepsCache sync.Map // map[packageDepsCacheKey]packageDepsCacheEntry
+
+// ClearPackageDepsCache clears the package dependencies cache.
+// This is primarily for testing to prevent cache pollution between tests.
+func ClearPackageDepsCache() {
+	packageDepsCache = sync.Map{}
+}
 
 // PackageImports is map of imports with their package names
 type PackageImports map[string]string
@@ -80,7 +102,33 @@ func UsedImports(f *ast.File, packageImports PackageImports) map[string]bool {
 // LoadPackageDependencies will return all package's imports with it names:
 //
 //	key - package(ex.: github/pkg/errors), value - name(ex.: errors)
+//
+// Results are cached for performance. Multiple calls with the same (dir, buildTag)
+// pair will return cached results. Only successful results are cached; errors are
+// not cached to avoid persisting transient failures.
 func LoadPackageDependencies(dir, buildTag string) (PackageImports, error) {
+	key := packageDepsCacheKey{dir: dir, buildTag: buildTag}
+
+	// Try to load from cache
+	if cached, ok := packageDepsCache.Load(key); ok {
+		entry := cached.(packageDepsCacheEntry)
+		return entry.imports, entry.err
+	}
+
+	// Not in cache, load
+	imports, err := loadPackageDependenciesUncached(dir, buildTag)
+
+	// Only cache successful results, not errors
+	if err == nil {
+		entry := packageDepsCacheEntry{imports: imports, err: nil}
+		packageDepsCache.Store(key, entry)
+	}
+
+	return imports, err
+}
+
+// loadPackageDependenciesUncached is the actual implementation without caching
+func loadPackageDependenciesUncached(dir, buildTag string) (PackageImports, error) {
 	cfg := &packages.Config{
 		Dir:   dir,
 		Tests: true,

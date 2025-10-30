@@ -11,6 +11,10 @@ import (
 // parseTestArchive extracts input and expected output from a txtar archive.
 func parseTestArchive(t *testing.T, archive string) (input, want []byte) {
 	t.Helper()
+
+	// Clear caches before each test to prevent pollution between tests
+	clearTestCaches()
+
 	ar := txtar.Parse([]byte(archive))
 	for _, f := range ar.Files {
 		switch f.Name {

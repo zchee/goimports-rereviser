@@ -7,8 +7,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
+
+	"github.com/alitto/pond"
+	"github.com/charlievieth/fastwalk"
 )
 
 type walkCallbackFunc = func(hasChanged bool, path string, content []byte) error
@@ -72,7 +77,20 @@ func (d *SourceDir) Fix(options ...SourceFileOption) error {
 	if !ok {
 		return ErrPathIsNotDir
 	}
-	err := filepath.WalkDir(d.dir, d.walk(
+
+	// Create worker pool sized for I/O-bound operations
+	// Use 2x GOMAXPROCS as files are I/O-bound
+	poolSize := runtime.GOMAXPROCS(0) * 2
+	pool := pond.New(poolSize, 0)
+	defer pool.StopAndWait()
+
+	// Collect files and submit to worker pool
+	var collectErr error
+	var processingErr error
+	var errMu sync.Mutex
+
+	err := fastwalk.Walk(&fastwalk.DefaultConfig, d.dir, d.walk(
+		pool,
 		func(hasChanged bool, path string, content []byte) error {
 			if !hasChanged {
 				return nil
@@ -83,10 +101,24 @@ func (d *SourceDir) Fix(options ...SourceFileOption) error {
 			}
 			return nil
 		},
+		&errMu,
+		&processingErr,
 		options...,
 	))
+
+	// Wait for all workers to complete
+	pool.StopAndWait()
+
 	if err != nil {
-		return fmt.Errorf("failed to walk dif: %w", err)
+		collectErr = fmt.Errorf("failed to walk dir: %w", err)
+	}
+
+	// Return first error encountered
+	if collectErr != nil {
+		return collectErr
+	}
+	if processingErr != nil {
+		return processingErr
 	}
 
 	return nil
@@ -97,23 +129,51 @@ func (d *SourceDir) Find(options ...SourceFileOption) (*UnformattedCollection, e
 	var (
 		ok                     bool
 		badFormattedCollection []string
+		collectionMu           sync.Mutex
 	)
 	d.dir, ok = IsDir(d.dir)
 	if !ok {
 		return nil, ErrPathIsNotDir
 	}
+
+	// Create worker pool sized for I/O-bound operations
+	poolSize := runtime.GOMAXPROCS(0) * 2
+	pool := pond.New(poolSize, 0)
+	defer pool.StopAndWait()
+
+	var collectErr error
+	var processingErr error
+	var errMu sync.Mutex
+
 	err := filepath.WalkDir(d.dir, d.walk(
+		pool,
 		func(hasChanged bool, path string, content []byte) error {
 			if !hasChanged {
 				return nil
 			}
+			collectionMu.Lock()
 			badFormattedCollection = append(badFormattedCollection, path)
+			collectionMu.Unlock()
 			return nil
 		},
+		&errMu,
+		&processingErr,
 		options...,
 	))
+
+	// Wait for all workers to complete
+	pool.StopAndWait()
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to walk dif: %w", err)
+		collectErr = fmt.Errorf("failed to walk dir: %w", err)
+	}
+
+	// Return first error encountered
+	if collectErr != nil {
+		return nil, collectErr
+	}
+	if processingErr != nil {
+		return nil, processingErr
 	}
 
 	if len(badFormattedCollection) == 0 {
@@ -123,20 +183,44 @@ func (d *SourceDir) Find(options ...SourceFileOption) (*UnformattedCollection, e
 	return newUnformattedCollection(badFormattedCollection), nil
 }
 
-func (d *SourceDir) walk(callback walkCallbackFunc, options ...SourceFileOption) fs.WalkDirFunc {
+// walk submits file processing to worker pool for concurrent execution.
+func (d *SourceDir) walk(pool *pond.WorkerPool, callback walkCallbackFunc, errMu *sync.Mutex, processingErr *error, options ...SourceFileOption) fs.WalkDirFunc {
 	return func(path string, dirEntry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
 		if !d.isRecursive && dirEntry.IsDir() && filepath.Base(d.dir) != dirEntry.Name() {
 			return filepath.SkipDir
 		}
 		if dirEntry.IsDir() && d.isExcluded(path) {
 			return filepath.SkipDir
 		}
+
+		// Submit Go file processing to worker pool
 		if isGoFile(path) && !dirEntry.IsDir() && !d.isExcluded(path) {
-			content, _, hasChange, err := NewSourceFile(d.projectName, path).Fix(options...)
-			if err != nil {
-				return fmt.Errorf("failed to fix %s: %w", path, err)
-			}
-			return callback(hasChange, path, content)
+			// Capture variables for goroutine
+			filePath := path
+
+			pool.Submit(func() {
+				content, _, hasChange, err := NewSourceFile(d.projectName, filePath).Fix(options...)
+				if err != nil {
+					errMu.Lock()
+					if *processingErr == nil {
+						*processingErr = fmt.Errorf("failed to fix %s: %w", filePath, err)
+					}
+					errMu.Unlock()
+					return
+				}
+
+				if err := callback(hasChange, filePath, content); err != nil {
+					errMu.Lock()
+					if *processingErr == nil {
+						*processingErr = err
+					}
+					errMu.Unlock()
+				}
+			})
 		}
 		return nil
 	}
