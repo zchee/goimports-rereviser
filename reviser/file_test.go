@@ -1380,6 +1380,87 @@ func main() {
 	}
 }
 
+func TestSourceFile_Fix_WithRemovingUnusedImportsAndAlias(t *testing.T) {
+	tests := []struct {
+		name        string
+		projectName string
+		filePath    string
+		archive     string
+		wantChange  bool
+		wantErr     bool
+	}{
+		{
+			name:        "removes unused import and sets alias",
+			projectName: "github.com/zchee/goimports-rereviser",
+			filePath:    "./testdata/example.go",
+			archive: `-- input.go --
+package testdata
+import(
+	"fmt"
+	"github.com/zchee/goimports-rereviser/v4/testdata/aliaspkg/v2"
+	"strconv"
+)
+
+func main(){
+	fmt.Println(aliaspkg.Value())
+}
+-- want.go --
+package testdata
+
+import (
+	"fmt"
+
+	aliaspkg "github.com/zchee/goimports-rereviser/v4/testdata/aliaspkg/v2"
+)
+
+func main() {
+	fmt.Println(aliaspkg.Value())
+}
+`,
+			wantChange: true,
+			wantErr:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input, want := parseTestArchive(t, tt.archive)
+
+			filePath := tt.filePath
+			if err := os.WriteFile(filePath, input, 0o644); err != nil {
+				t.Fatalf("failed to write test file: %v", err)
+			}
+			t.Cleanup(func() {
+				_ = os.Remove(filePath)
+			})
+
+			got, _, hasChange, err := NewSourceFile(tt.projectName, filePath).Fix(
+				WithRemovingUnusedImports,
+				WithUsingAliasForVersionSuffix,
+			)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if hasChange != tt.wantChange {
+				t.Errorf("hasChange = %v, want %v", hasChange, tt.wantChange)
+			}
+
+			if want != nil && string(got) != string(want) {
+				t.Errorf("output mismatch:\ngot:\n%s\n\nwant:\n%s", got, want)
+			}
+		})
+	}
+}
+
 func TestSourceFile_Fix_WithLocalPackagePrefixes(t *testing.T) {
 	tests := []struct {
 		name             string

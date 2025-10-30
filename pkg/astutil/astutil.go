@@ -19,45 +19,59 @@ type PackageImports map[string]string
 
 // UsesImport is for analyze if the import dependency is in use
 func UsesImport(f *ast.File, packageImports PackageImports, importPath string) bool {
-	importIdentNames := make(map[string]struct{}, len(f.Imports))
+	importPath = strings.Trim(importPath, `"`)
+	return UsedImports(f, packageImports)[importPath]
+}
 
-	var importSpec *ast.ImportSpec
+// UsedImports walks the AST once and reports which imports are referenced.
+func UsedImports(f *ast.File, packageImports PackageImports) map[string]bool {
+	used := make(map[string]bool, len(f.Imports))
+	aliasToPath := make(map[string]string, len(f.Imports))
+
 	for _, spec := range f.Imports {
-		name := spec.Name.String()
-		switch name {
-		case "<nil>":
-			pkgName := packageImports[importPath]
-			importIdentNames[pkgName] = struct{}{}
-		case "_", ".":
-			return true
-		default:
-			importIdentNames[name] = struct{}{}
+		path := strings.Trim(spec.Path.Value, `"`)
+		if spec.Name != nil {
+			name := spec.Name.Name
+			switch name {
+			case "_", ".":
+				used[path] = true
+				continue
+			default:
+				aliasToPath[name] = path
+				continue
+			}
 		}
 
-		if importPath == strings.Trim(spec.Path.Value, `"`) {
-			importSpec = spec
+		pkgName := packageImports[path]
+		if pkgName == "" {
+			if idx := strings.LastIndex(path, "/"); idx >= 0 {
+				pkgName = path[idx+1:]
+			} else {
+				pkgName = path
+			}
 		}
+		aliasToPath[pkgName] = path
 	}
 
-	var used bool
-	ast.Walk(
-		visitFn(
-			func(node ast.Node) {
-				sel, ok := node.(*ast.SelectorExpr)
-				if ok {
-					ident, ok := sel.X.(*ast.Ident)
-					if ok {
-						if _, ok := importIdentNames[ident.Name]; ok {
-							pkg := packageImports[importPath]
-							if (ident.Name == pkg || ident.Name == importSpec.Name.String()) && ident.Obj == nil {
-								used = true
-								return
-							}
-						}
-					}
-				}
-			},
-		), f,
+	ast.Inspect(
+		f,
+		func(node ast.Node) bool {
+			sel, ok := node.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+
+			ident, ok := sel.X.(*ast.Ident)
+			if !ok || ident.Obj != nil {
+				return true
+			}
+
+			if path, ok := aliasToPath[ident.Name]; ok {
+				used[path] = true
+			}
+
+			return true
+		},
 	)
 
 	return used
@@ -101,7 +115,7 @@ func LoadPackageDependencies(dir, buildTag string) (PackageImports, error) {
 func ParseBuildTag(f *ast.File) string {
 	for _, g := range f.Comments {
 		for _, c := range g.List {
-			if !(strings.HasPrefix(c.Text, buildTagPrefix) || strings.HasPrefix(c.Text, deprecatedBuildTagPrefix)) {
+			if !strings.HasPrefix(c.Text, buildTagPrefix) && !strings.HasPrefix(c.Text, deprecatedBuildTagPrefix) {
 				continue
 			}
 			return strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(c.Text, buildTagPrefix), deprecatedBuildTagPrefix))

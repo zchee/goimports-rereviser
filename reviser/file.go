@@ -495,6 +495,11 @@ func (f *SourceFile) parseImports(file *ast.File) (map[string]*commentsMetadata,
 		}
 	}
 
+	var usedImports map[string]bool
+	if shouldRemoveUnusedImports {
+		usedImports = astutil.UsedImports(file, packageImports)
+	}
+
 	for _, decl := range file.Decls {
 		dd, ok := decl.(*ast.GenDecl)
 		if !ok {
@@ -506,9 +511,8 @@ func (f *SourceFile) parseImports(file *ast.File) (map[string]*commentsMetadata,
 		for _, spec := range dd.Specs {
 			importSpec := spec.(*ast.ImportSpec)
 
-			if shouldRemoveUnusedImports && !astutil.UsesImport(
-				file, packageImports, strings.Trim(importSpec.Path.Value, `"`),
-			) {
+			importPath := strings.Trim(importSpec.Path.Value, `"`)
+			if shouldRemoveUnusedImports && !usedImports[importPath] {
 				continue
 			}
 

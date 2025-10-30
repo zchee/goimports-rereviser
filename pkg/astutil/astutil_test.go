@@ -167,6 +167,117 @@ func main(){
 	}
 }
 
+func TestUsedImports(t *testing.T) {
+	t.Parallel()
+
+	type args struct {
+		fileData       string
+		packageImports map[string]string
+	}
+
+	tests := []struct {
+		name string
+		args args
+		want map[string]bool
+	}{
+		{
+			name: "reports used and unused imports",
+			args: args{
+				fileData: `package main
+import(
+	"fmt"
+	"github.com/go-pg/pg/v9"
+	"strconv"
+)
+
+func main(){
+	fmt.Println(pg.In([]string{"test"}))
+}
+`,
+				packageImports: map[string]string{
+					"fmt":                    "fmt",
+					"strconv":                "strconv",
+					"github.com/go-pg/pg/v9": "pg",
+				},
+			},
+			want: map[string]bool{
+				"fmt":                    true,
+				"github.com/go-pg/pg/v9": true,
+				"strconv":                false,
+			},
+		},
+		{
+			name: "respects explicit alias",
+			args: args{
+				fileData: `package main
+import(
+	pg2 "github.com/go-pg/pg/v9"
+)
+
+func main(){
+	_ = pg2.In([]string{"test"})
+}
+`,
+				packageImports: map[string]string{
+					"github.com/go-pg/pg/v9": "pg",
+				},
+			},
+			want: map[string]bool{
+				"github.com/go-pg/pg/v9": true,
+			},
+		},
+		{
+			name: "marks blank and dot imports as used",
+			args: args{
+				fileData: `package main
+import(
+	_ "github.com/go-pg/pg/v9"
+	. "fmt"
+)
+
+func main(){
+	Println("ok")
+}
+`,
+				packageImports: map[string]string{
+					"fmt":                    "fmt",
+					"github.com/go-pg/pg/v9": "pg",
+				},
+			},
+			want: map[string]bool{
+				"github.com/go-pg/pg/v9": true,
+				"fmt":                    true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, "", []byte(tt.args.fileData), parser.ParseComments)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := UsedImports(f, tt.args.packageImports)
+			for path, wantUsed := range tt.want {
+				gotUsed, ok := got[path]
+				if wantUsed {
+					if !ok || !gotUsed {
+						t.Errorf("expected %s to be marked used, got %v", path, gotUsed)
+					}
+					continue
+				}
+				if ok && gotUsed {
+					t.Errorf("expected %s to be unused", path)
+				}
+			}
+		})
+	}
+}
+
 func TestLoadPackageDeps(t *testing.T) {
 	t.Parallel()
 
