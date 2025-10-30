@@ -15,7 +15,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/zchee/goimports-rereviser/v4/helper"
+	"github.com/zchee/goimports-rereviser/v4/pkg/module"
 	"github.com/zchee/goimports-rereviser/v4/reviser"
 )
 
@@ -357,7 +357,7 @@ func main() {
 	log.Printf("Paths: %v\n", originPaths)
 	for _, originPath := range originPaths {
 		log.Printf("Processing %s\n", originPath)
-		originProjectName, err := helper.DetermineProjectName(projectName, originPath, helper.OSGetwdOption)
+		originProjectName, err := determineProjectName(projectName, originPath, osGetwdOption)
 		if err != nil {
 			printUsageAndExit(fmt.Errorf("Could not determine project name for path %s: %s", originPath, err))
 		}
@@ -502,4 +502,22 @@ func printDeprecations(deprecatedMessagesCh chan string) {
 		log.Printf("All changes to file are applied, but command-line syntax should be fixed\n")
 		os.Exit(1)
 	}
+}
+
+type Option func() (string, error)
+
+func osGetwdOption() (string, error) {
+	return os.Getwd()
+}
+
+func determineProjectName(projectName, filePath string, option Option) (string, error) {
+	if filePath == reviser.StandardInput {
+		var err error
+		filePath, err = option()
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return module.DetermineProjectName(projectName, filePath)
 }
