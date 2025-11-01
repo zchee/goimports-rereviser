@@ -360,6 +360,19 @@ func main() {
 	var hasChangeMu sync.Mutex
 	log.Printf("Paths: %v\n", originPaths)
 
+	var cacheDir string
+	if *isUseCache {
+		u, err := user.Current()
+		if err != nil {
+			log.Fatalf("Failed to get current user: %+v\n", err)
+		}
+
+		cacheDir = path.Join(u.HomeDir, ".cache", "goimports-rereviser")
+		if err = os.MkdirAll(cacheDir, os.ModePerm); err != nil {
+			log.Fatalf("Failed to create cache directory: %+v\n", err)
+		}
+	}
+
 	// Process paths concurrently using errgroup for coordinated execution
 	g := new(errgroup.Group)
 
@@ -410,15 +423,6 @@ func main() {
 			var pathHasChange bool
 			if *isUseCache {
 				hash := md5.Sum([]byte(pathToProcess))
-
-				u, err := user.Current()
-				if err != nil {
-					log.Fatalf("Failed to get current user: %+v\n", err)
-				}
-				cacheDir := path.Join(u.HomeDir, ".cache", "goimports-rereviser")
-				if err = os.MkdirAll(cacheDir, os.ModePerm); err != nil {
-					log.Fatalf("Failed to create cache directory: %+v\n", err)
-				}
 				cacheFile := path.Join(cacheDir, hex.EncodeToString(hash[:]))
 
 				var cacheContent, fileContent []byte
@@ -440,23 +444,8 @@ func main() {
 				}
 				fileHash := md5.Sum(formattedOutput)
 				fileHashHex := hex.EncodeToString(fileHash[:])
-				if fileInfo, err := os.Stat(cacheFile); err != nil || fileInfo.IsDir() {
-					if _, err = os.Create(cacheFile); err != nil {
-						log.Fatalf("Failed to create cache file: %+v\n", err)
-					}
-				}
-				file, _ := os.OpenFile(cacheFile, os.O_RDWR, os.ModePerm)
-				defer func() {
-					_ = file.Close()
-				}()
-				if err = file.Truncate(0); err != nil {
-					log.Fatalf("Failed file truncate: %+v\n", err)
-				}
-				if _, err = file.Seek(0, 0); err != nil {
-					log.Fatalf("Failed file seek: %+v\n", err)
-				}
-				if _, err = file.WriteString(fileHashHex); err != nil {
-					log.Fatalf("Failed to write file hash: %+v\n", err)
+				if err = os.WriteFile(cacheFile, []byte(fileHashHex), 0o644); err != nil {
+					log.Fatalf("Failed to write cache file: %+v\n", err)
 				}
 			} else {
 				formattedOutput, _, pathHasChange, err = reviser.NewSourceFile(originProjectName, pathToProcess).Fix(options...)
