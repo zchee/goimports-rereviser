@@ -10,3 +10,8 @@ require (
 	golang.org/x/sync v0.17.0
 	golang.org/x/tools v0.38.0
 )
+
+require (
+	github.com/adrg/xdg v0.5.3
+	golang.org/x/sys v0.37.0 // indirect
+)
