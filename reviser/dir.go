@@ -1,8 +1,11 @@
 package reviser
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"os"
@@ -37,6 +40,8 @@ type SourceDir struct {
 	excludePatterns     []string // see filepath.Match
 	workerPool          *pond.WorkerPool
 	sequentialThreshold int
+	cacheDir            string
+	cacheEnabled        bool
 }
 
 func NewSourceDir(projectName, path string, isRecursive bool, excludes string) *SourceDir {
@@ -79,6 +84,16 @@ func NewSourceDir(projectName, path string, isRecursive bool, excludes string) *
 // WithWorkerPool configures SourceDir to reuse an existing worker pool.
 func (d *SourceDir) WithWorkerPool(pool *pond.WorkerPool) *SourceDir {
 	d.workerPool = pool
+	return d
+}
+
+// WithCache enables caching using the provided directory.
+func (d *SourceDir) WithCache(cacheDir string) *SourceDir {
+	if cacheDir == "" {
+		return d
+	}
+	d.cacheDir = cacheDir
+	d.cacheEnabled = true
 	return d
 }
 
@@ -208,6 +223,16 @@ func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *
 		if isGoFile(path) && !dirEntry.IsDir() && !d.isExcluded(path) {
 			filePath := path
 
+			if d.cacheEnabled {
+				skip, cacheErr := d.shouldSkipByCache(filePath)
+				if cacheErr != nil {
+					return cacheErr
+				}
+				if skip {
+					return nil
+				}
+			}
+
 			submit(func() {
 				content, _, hasChange, err := NewSourceFile(d.projectName, filePath).Fix(options...)
 				if err != nil {
@@ -225,6 +250,19 @@ func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *
 						*processingErr = err
 					}
 					errMu.Unlock()
+				}
+
+				if d.cacheEnabled {
+					hash := hashBytes(content)
+					if hash != "" {
+						if cacheErr := d.writeCache(filePath, hash); cacheErr != nil {
+							errMu.Lock()
+							if *processingErr == nil {
+								*processingErr = cacheErr
+							}
+							errMu.Unlock()
+						}
+					}
 				}
 			})
 		}
@@ -370,4 +408,74 @@ func IsDir(path string) (string, bool) {
 
 func isGoFile(path string) bool {
 	return filepath.Ext(path) == goExtension
+}
+
+func (d *SourceDir) shouldSkipByCache(path string) (bool, error) {
+	if !d.cacheEnabled || d.cacheDir == "" {
+		return false, nil
+	}
+
+	absPath := path
+	if !filepath.IsAbs(absPath) {
+		absPath = filepath.Join(d.dir, path)
+	}
+
+	cacheFile := d.cacheFilePath(absPath)
+	cachedHash, err := os.ReadFile(cacheFile)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	currentHash, err := hashFile(absPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			_ = os.Remove(cacheFile)
+			return true, nil
+		}
+		return false, err
+	}
+
+	return string(cachedHash) == currentHash, nil
+}
+
+func (d *SourceDir) writeCache(path, hash string) error {
+	if !d.cacheEnabled || d.cacheDir == "" || hash == "" {
+		return nil
+	}
+
+	absPath := path
+	if !filepath.IsAbs(absPath) {
+		absPath = filepath.Join(d.dir, path)
+	}
+
+	cacheFile := d.cacheFilePath(absPath)
+	return os.WriteFile(cacheFile, []byte(hash), 0o644)
+}
+
+func (d *SourceDir) cacheFilePath(absPath string) string {
+	sum := md5.Sum([]byte(absPath))
+	return filepath.Join(d.cacheDir, hex.EncodeToString(sum[:]))
+}
+
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func hashBytes(b []byte) string {
+	sum := md5.Sum(b)
+	return hex.EncodeToString(sum[:])
 }

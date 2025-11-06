@@ -219,6 +219,9 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 				if cfg.listFileName {
 					dir := reviser.NewSourceDir(originProjectName, pathValue, cfg.isRecursive, cfg.excludes).
 						WithWorkerPool(getSharedPool())
+					if cfg.isUseCache && cacheDir != "" {
+						dir = dir.WithCache(cacheDir)
+					}
 
 					unformattedFiles, err := dir.Find(options...)
 					if err != nil {
@@ -235,6 +238,9 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 
 				dir := reviser.NewSourceDir(originProjectName, pathValue, cfg.isRecursive, cfg.excludes).
 					WithWorkerPool(getSharedPool())
+				if cfg.isUseCache && cacheDir != "" {
+					dir = dir.WithCache(cacheDir)
+				}
 
 				if err := dir.Fix(options...); err != nil {
 					return fmt.Errorf("Failed to fix directory %s: %w", pathValue, err)

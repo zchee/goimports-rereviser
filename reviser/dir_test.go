@@ -286,6 +286,64 @@ func main() {
 	}
 }
 
+func TestSourceDir_Fix_CacheSkipsUnchangedFiles(t *testing.T) {
+	t.Parallel()
+
+	project := "github.com/example/project"
+	tmpDir := t.TempDir()
+	cacheRoot := t.TempDir()
+	cacheDir := filepath.Join(cacheRoot, "cache")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatalf("failed to create cache directory: %v", err)
+	}
+
+	filePath := filepath.Join(tmpDir, "cached.go")
+	unformatted := []byte(`package testdata
+
+import (
+	"github.com/pkg/errors"
+	"fmt"
+)
+
+func main() {
+	fmt.Println(errors.New("cached"))
+}
+`)
+
+	if err := os.WriteFile(filePath, unformatted, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	dir := NewSourceDir(project, tmpDir, true, "").
+		WithSequentialThreshold(0).
+		WithCache(cacheDir)
+
+	if err := dir.Fix(); err != nil {
+		t.Fatalf("Fix returned error: %v", err)
+	}
+
+	skip, err := dir.shouldSkipByCache(filePath)
+	if err != nil {
+		t.Fatalf("shouldSkipByCache returned error: %v", err)
+	}
+	if !skip {
+		t.Fatalf("expected cache to skip unchanged file")
+	}
+
+	// mutate the file and verify the cache no longer skips processing
+	if err := os.WriteFile(filePath, unformatted[:len(unformatted)-1], 0o644); err != nil {
+		t.Fatalf("failed to modify fixture: %v", err)
+	}
+
+	skip, err = dir.shouldSkipByCache(filePath)
+	if err != nil {
+		t.Fatalf("shouldSkipByCache returned error: %v", err)
+	}
+	if skip {
+		t.Fatalf("expected cache miss after file modification")
+	}
+}
+
 func TestUnformattedCollection_List(t *testing.T) {
 	tests := []struct {
 		name    string
