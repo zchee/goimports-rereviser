@@ -110,6 +110,11 @@ func (f *SourceFile) Fix(options ...SourceFileOption) ([]byte, []byte, bool, err
 		return nil, originalContent, false, err
 	}
 
+	importsChanged := !bytes.Equal(originalContent, fixedImportsContent)
+	if !importsChanged && !f.shouldFormatCode {
+		return originalContent, originalContent, false, nil
+	}
+
 	formattedContent, err := format.Source(fixedImportsContent)
 	if err != nil {
 		return nil, originalContent, false, err
