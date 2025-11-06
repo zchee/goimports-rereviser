@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/sync/singleflight"
 )
 
 func TestUsesImport(t *testing.T) {
@@ -347,5 +350,79 @@ func TestLoadPackageDeps(t *testing.T) {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func TestLoadPackageDependenciesSingleflight(t *testing.T) {
+	t.Parallel()
+
+	ClearPackageDepsCache()
+	packageDepsGroup = singleflight.Group{}
+
+	originalLoader := loadPackageDependenciesFunc
+	defer func() { loadPackageDependenciesFunc = originalLoader }()
+
+	var callCount int32
+	ready := make(chan struct{})
+	proceed := make(chan struct{})
+
+	loadPackageDependenciesFunc = func(dir, buildTag string) (PackageImports, error) {
+		if atomic.AddInt32(&callCount, 1) == 1 {
+			close(ready)
+		}
+		<-proceed
+		return PackageImports{"example.com/pkg": "pkg"}, nil
+	}
+
+	const goroutineCount = 8
+	var wg sync.WaitGroup
+	errCh := make(chan error, goroutineCount)
+
+	for i := 0; i < goroutineCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			imports, err := LoadPackageDependencies("/tmp/test", "")
+			if err != nil {
+				errCh <- fmt.Errorf("LoadPackageDependencies failed: %w", err)
+				return
+			}
+			if imports["example.com/pkg"] != "pkg" {
+				errCh <- fmt.Errorf("unexpected imports map: %v", imports)
+				return
+			}
+			errCh <- nil
+		}()
+	}
+
+	<-ready
+	close(proceed)
+	wg.Wait()
+
+	for i := 0; i < goroutineCount; i++ {
+		if err := <-errCh; err != nil {
+			t.Fatalf("goroutine returned error: %v", err)
+		}
+	}
+
+	if got := atomic.LoadInt32(&callCount); got != 1 {
+		t.Fatalf("expected single loader invocation, got %d", got)
+	}
+
+	// Ensure cached result is reused without invoking loader again.
+	loadPackageDependenciesFunc = func(dir, buildTag string) (PackageImports, error) {
+		atomic.AddInt32(&callCount, 1)
+		return nil, fmt.Errorf("unexpected loader invocation")
+	}
+
+	imports, err := LoadPackageDependencies("/tmp/test", "")
+	if err != nil {
+		t.Fatalf("unexpected error retrieving from cache: %v", err)
+	}
+	if imports["example.com/pkg"] != "pkg" {
+		t.Fatalf("cached result mismatch: %v", imports)
+	}
+	if got := atomic.LoadInt32(&callCount); got != 1 {
+		t.Fatalf("cache miss incremented loader count: %d", got)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/sync/singleflight"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -29,6 +30,12 @@ type packageDepsCacheKey struct {
 
 // packageDepsCache provides thread-safe caching for LoadPackageDependencies
 var packageDepsCache sync.Map // map[packageDepsCacheKey]packageDepsCacheEntry
+
+// packageDepsGroup ensures only one load per unique key runs at a time.
+var packageDepsGroup singleflight.Group
+
+// loadPackageDependenciesFunc allows tests to stub the uncached loader.
+var loadPackageDependenciesFunc = loadPackageDependenciesUncached
 
 // ClearPackageDepsCache clears the package dependencies cache.
 // This is primarily for testing to prevent cache pollution between tests.
@@ -115,16 +122,20 @@ func LoadPackageDependencies(dir, buildTag string) (PackageImports, error) {
 		return entry.imports, entry.err
 	}
 
-	// Not in cache, load
-	imports, err := loadPackageDependenciesUncached(dir, buildTag)
-
-	// Only cache successful results, not errors
-	if err == nil {
-		entry := packageDepsCacheEntry{imports: imports, err: nil}
-		packageDepsCache.Store(key, entry)
+	// Not in cache, load with singleflight to deduplicate concurrent requests
+	value, err, _ := packageDepsGroup.Do(key.dir+"|"+key.buildTag, func() (any, error) {
+		return loadPackageDependenciesFunc(dir, buildTag)
+	})
+	if err != nil {
+		return PackageImports{}, err
 	}
 
-	return imports, err
+	imports := value.(PackageImports)
+
+	entry := packageDepsCacheEntry{imports: imports, err: nil}
+	packageDepsCache.Store(key, entry)
+
+	return imports, nil
 }
 
 // loadPackageDependenciesUncached is the actual implementation without caching
