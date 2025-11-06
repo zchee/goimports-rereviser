@@ -11,22 +11,26 @@ import (
 	"strings"
 )
 
-func printUsage() {
+func printUsage() exitCode {
 	if _, err := fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0]); err != nil {
 		log.Fatalf("failed to print usage: %s", err)
 	}
 
 	flag.PrintDefaults()
+
+	return exitUsage
 }
 
 // printUsageAndExit prints usage and exits with status 0
 // if err is nil, otherwise it prints the error and exits with status 1
-func printUsageAndExit(err error) {
+func printUsageAndExit(err error) exitCode {
 	printUsage()
 	if err != nil {
-		log.Fatalf("%s", err)
+		log.Printf("%s", err)
+		return exitError
 	}
-	os.Exit(0)
+
+	return exitUsage
 }
 
 func getBuildInfo() *debug.BuildInfo {
@@ -56,7 +60,7 @@ func getMyModuleInfo(bi *debug.BuildInfo) (*debug.Module, error) {
 	return nil, errors.New("no matching module found in build info")
 }
 
-func printVersion() {
+func printVersion() exitCode {
 	if Tag != "" {
 		fmt.Printf(
 			"version: %s\nbuilt with: %s\ntag: %s\ncommit: %s\nsource: %s\n",
@@ -66,12 +70,13 @@ func printVersion() {
 			Commit,
 			SourceURL,
 		)
-		return
+		return exitUsage
 	}
 	bi := getBuildInfo()
 	myModule, err := getMyModuleInfo(bi)
 	if err != nil {
-		log.Fatalf("failed to get my module info: %s", err)
+		log.Printf("failed to get my module info: %s", err)
+		return exitError
 	}
 	fmt.Printf(
 		"version: %s\nbuilt with: %s\ntag: %s\ncommit: %s\nsource: %s\n",
@@ -81,17 +86,22 @@ func printVersion() {
 		"n/a",
 		myModule.Path,
 	)
+
+	return exitUsage
 }
 
-func printVersionOnly() {
+func printVersionOnly() exitCode {
 	if Tag != "" {
 		fmt.Println(strings.TrimPrefix(Tag, "v"))
-		return
+		return exitUsage
 	}
 	bi := getBuildInfo()
 	myModule, err := getMyModuleInfo(bi)
 	if err != nil {
-		log.Fatalf("failed to get my module info: %s", err)
+		log.Printf("failed to get my module info: %s", err)
+		return exitError
 	}
 	fmt.Println(strings.TrimPrefix(myModule.Version, "v"))
+
+	return exitUsage
 }

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/alitto/pond"
 	"github.com/charlievieth/fastwalk"
@@ -19,8 +20,9 @@ import (
 type walkCallbackFunc = func(hasChanged bool, path string, content []byte) error
 
 const (
-	goExtension   = ".go"
-	recursivePath = "./..."
+	goExtension              = ".go"
+	recursivePath            = "./..."
+	defaultParallelThreshold = 8
 )
 
 var currentPaths = []string{".", "." + string(filepath.Separator)}
@@ -29,10 +31,12 @@ var ErrPathIsNotDir = errors.New("path is not a directory")
 
 // SourceDir to validate and fix import
 type SourceDir struct {
-	projectName     string
-	dir             string
-	isRecursive     bool
-	excludePatterns []string // see filepath.Match
+	projectName         string
+	dir                 string
+	isRecursive         bool
+	excludePatterns     []string // see filepath.Match
+	workerPool          *pond.WorkerPool
+	sequentialThreshold int
 }
 
 func NewSourceDir(projectName, path string, isRecursive bool, excludes string) *SourceDir {
@@ -64,11 +68,25 @@ func NewSourceDir(projectName, path string, isRecursive bool, excludes string) *
 		}
 	}
 	return &SourceDir{
-		projectName:     projectName,
-		dir:             absPath,
-		isRecursive:     isRecursive,
-		excludePatterns: patterns,
+		projectName:         projectName,
+		dir:                 absPath,
+		isRecursive:         isRecursive,
+		excludePatterns:     patterns,
+		sequentialThreshold: defaultParallelThreshold,
 	}
+}
+
+// WithWorkerPool configures SourceDir to reuse an existing worker pool.
+func (d *SourceDir) WithWorkerPool(pool *pond.WorkerPool) *SourceDir {
+	d.workerPool = pool
+	return d
+}
+
+// WithSequentialThreshold overrides the minimum number of files before
+// parallel execution is enabled. Primarily used for testing.
+func (d *SourceDir) WithSequentialThreshold(threshold int) *SourceDir {
+	d.sequentialThreshold = threshold
+	return d
 }
 
 func (d *SourceDir) Fix(options ...SourceFileOption) error {
@@ -78,11 +96,8 @@ func (d *SourceDir) Fix(options ...SourceFileOption) error {
 		return ErrPathIsNotDir
 	}
 
-	// Create worker pool sized for I/O-bound operations
-	// Use 2x GOMAXPROCS as files are I/O-bound
-	poolSize := runtime.GOMAXPROCS(0) * 2
-	pool := pond.New(poolSize, 0)
-	defer pool.StopAndWait()
+	submit, wait := d.makeSubmitter()
+	defer wait()
 
 	// Collect files and submit to worker pool
 	var collectErr error
@@ -90,7 +105,7 @@ func (d *SourceDir) Fix(options ...SourceFileOption) error {
 	var errMu sync.Mutex
 
 	err := fastwalk.Walk(&fastwalk.DefaultConfig, d.dir, d.walk(
-		pool,
+		submit,
 		func(hasChanged bool, path string, content []byte) error {
 			if !hasChanged {
 				return nil
@@ -105,9 +120,6 @@ func (d *SourceDir) Fix(options ...SourceFileOption) error {
 		&processingErr,
 		options...,
 	))
-
-	// Wait for all workers to complete
-	pool.StopAndWait()
 
 	if err != nil {
 		collectErr = fmt.Errorf("failed to walk dir: %w", err)
@@ -136,17 +148,15 @@ func (d *SourceDir) Find(options ...SourceFileOption) (*UnformattedCollection, e
 		return nil, ErrPathIsNotDir
 	}
 
-	// Create worker pool sized for I/O-bound operations
-	poolSize := runtime.GOMAXPROCS(0) * 2
-	pool := pond.New(poolSize, 0)
-	defer pool.StopAndWait()
+	submit, wait := d.makeSubmitter()
+	defer wait()
 
 	var collectErr error
 	var processingErr error
 	var errMu sync.Mutex
 
 	err := filepath.WalkDir(d.dir, d.walk(
-		pool,
+		submit,
 		func(hasChanged bool, path string, content []byte) error {
 			if !hasChanged {
 				return nil
@@ -160,9 +170,6 @@ func (d *SourceDir) Find(options ...SourceFileOption) (*UnformattedCollection, e
 		&processingErr,
 		options...,
 	))
-
-	// Wait for all workers to complete
-	pool.StopAndWait()
 
 	if err != nil {
 		collectErr = fmt.Errorf("failed to walk dir: %w", err)
@@ -184,7 +191,7 @@ func (d *SourceDir) Find(options ...SourceFileOption) (*UnformattedCollection, e
 }
 
 // walk submits file processing to worker pool for concurrent execution.
-func (d *SourceDir) walk(pool *pond.WorkerPool, callback walkCallbackFunc, errMu *sync.Mutex, processingErr *error, options ...SourceFileOption) fs.WalkDirFunc {
+func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *sync.Mutex, processingErr *error, options ...SourceFileOption) fs.WalkDirFunc {
 	return func(path string, dirEntry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -199,10 +206,9 @@ func (d *SourceDir) walk(pool *pond.WorkerPool, callback walkCallbackFunc, errMu
 
 		// Submit Go file processing to worker pool
 		if isGoFile(path) && !dirEntry.IsDir() && !d.isExcluded(path) {
-			// Capture variables for goroutine
 			filePath := path
 
-			pool.Submit(func() {
+			submit(func() {
 				content, _, hasChange, err := NewSourceFile(d.projectName, filePath).Fix(options...)
 				if err != nil {
 					errMu.Lock()
@@ -224,6 +230,73 @@ func (d *SourceDir) walk(pool *pond.WorkerPool, callback walkCallbackFunc, errMu
 		}
 		return nil
 	}
+}
+
+func (d *SourceDir) makeSubmitter() (func(func()), func()) {
+	var (
+		providedPool = d.workerPool
+		pool         = providedPool
+		poolMu       sync.Mutex
+		poolCreated  bool
+		pending      sync.WaitGroup
+		fileCount    int32
+	)
+
+	threshold := d.sequentialThreshold
+	if threshold <= 0 {
+		threshold = defaultParallelThreshold
+	}
+
+	canCreatePool := providedPool == nil
+
+	submit := func(task func()) {
+		poolMu.Lock()
+		currentPool := pool
+		poolMu.Unlock()
+
+		if currentPool != nil {
+			pending.Add(1)
+			currentPool.Submit(func() {
+				defer pending.Done()
+				task()
+			})
+			return
+		}
+
+		count := atomic.AddInt32(&fileCount, 1)
+		if !canCreatePool || int(count) <= threshold {
+			task()
+			return
+		}
+
+		poolMu.Lock()
+		if pool == nil && canCreatePool {
+			pool = pond.New(runtime.GOMAXPROCS(0)*2, 0)
+			poolCreated = true
+		}
+		currentPool = pool
+		poolMu.Unlock()
+
+		if currentPool != nil {
+			pending.Add(1)
+			currentPool.Submit(func() {
+				defer pending.Done()
+				task()
+			})
+			return
+		}
+
+		task()
+	}
+
+	wait := func() {
+		pending.Wait()
+		if poolCreated {
+			pool.StopAndWait()
+		}
+	}
+
+	return submit, wait
 }
 
 func (d *SourceDir) isExcluded(path string) bool {
