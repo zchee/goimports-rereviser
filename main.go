@@ -40,10 +40,11 @@ type Config struct {
 	shouldShowVersionOnly bool
 	shouldShowVersion     bool
 
-	listFileName  bool
-	setExitStatus bool
-	isRecursive   bool
-	isUseCache    bool
+	listFileName     bool
+	setExitStatus    bool
+	isRecursive      bool
+	isUseCache       bool
+	useMetadataCache bool
 
 	shouldRemoveUnusedImports   bool
 	shouldSetAlias              bool
@@ -71,6 +72,7 @@ dotted - imports with "." alias.`,
 	flag.BoolVar(&cfg.setExitStatus, "set-exit-status", false, `set the exit status to 1 if a change is needed/made. Optional parameter.`)
 	flag.BoolVar(&cfg.isRecursive, "recursive", false, `Apply rules recursively if target is a directory. In case of ./... execution will be recursively applied by default. Optional parameter.`)
 	flag.BoolVar(&cfg.isUseCache, "use-cache", false, `Use cache to improve performance. Optional parameter.`)
+	flag.BoolVar(&cfg.useMetadataCache, "cache-fast-skip", false, `Experimental: rely on file metadata to skip cached files without re-reading them. Requires -use-cache.`)
 
 	flag.BoolVar(&cfg.shouldRemoveUnusedImports, "rm-unused", false, `Remove unused imports. Optional parameter.`)
 	flag.BoolVar(&cfg.shouldSetAlias, "set-alias", false, `Set alias for versioned package names, like 'github.com/go-pg/pg/v9'. In this case import will be set as 'pg \"github.com/go-pg/pg/v9\"'. Optional parameter.`)
@@ -103,6 +105,10 @@ func run() exitCode {
 
 	if cfg.shouldShowVersion {
 		return printVersion()
+	}
+
+	if cfg.useMetadataCache && !cfg.isUseCache {
+		return printUsageAndExit(errors.New("cache-fast-skip requires --use-cache"))
 	}
 
 	originPaths := flag.Args()
@@ -221,6 +227,9 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 						WithWorkerPool(getSharedPool())
 					if cfg.isUseCache && cacheDir != "" {
 						dir = dir.WithCache(cacheDir)
+						if cfg.useMetadataCache {
+							dir = dir.WithMetadataCache()
+						}
 					}
 
 					unformattedFiles, err := dir.Find(options...)
@@ -240,6 +249,9 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 					WithWorkerPool(getSharedPool())
 				if cfg.isUseCache && cacheDir != "" {
 					dir = dir.WithCache(cacheDir)
+					if cfg.useMetadataCache {
+						dir = dir.WithMetadataCache()
+					}
 				}
 
 				if err := dir.Fix(options...); err != nil {
@@ -262,34 +274,36 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 			)
 
 			if cfg.isUseCache {
-				hash := md5.Sum([]byte(pathToProcess))
-				hashedCacheFile := filepath.Join(cacheDir, hex.EncodeToString(hash[:]))
-
-				cacheContent, readErr := os.ReadFile(hashedCacheFile)
-				if readErr == nil {
-					fileContent, readFileErr := os.ReadFile(pathToProcess)
-					if readFileErr == nil {
-						fileHash := md5.Sum(fileContent)
-						if string(cacheContent) == hex.EncodeToString(fileHash[:]) {
-							return nil
-						}
-					}
+				var skip bool
+				var checkErr error
+				if cfg.useMetadataCache {
+					skip, checkErr = reviser.ShouldSkipByMetadata(cacheDir, pathToProcess)
+				} else {
+					skip, checkErr = reviser.ShouldSkipByHash(cacheDir, pathToProcess)
 				}
-
-				formattedOutput, _, pathHasChange, readErr = reviser.NewSourceFile(originProjectName, pathToProcess).Fix(options...)
-				if readErr != nil {
-					return fmt.Errorf("Failed to fix file %s: %w", pathToProcess, readErr)
+				if checkErr != nil {
+					return fmt.Errorf("Failed to evaluate cache for %s: %w", pathToProcess, checkErr)
 				}
-
-				fileHash := md5.Sum(formattedOutput)
-				cacheValue := hex.EncodeToString(fileHash[:])
-				if readErr = os.WriteFile(hashedCacheFile, []byte(cacheValue), 0o644); readErr != nil {
-					return fmt.Errorf("Failed to write cache file %s: %w", hashedCacheFile, readErr)
+				if skip {
+					return nil
 				}
-			} else {
-				formattedOutput, _, pathHasChange, err = reviser.NewSourceFile(originProjectName, pathToProcess).Fix(options...)
-				if err != nil {
-					return fmt.Errorf("Failed to fix file %s: %w", pathToProcess, err)
+			}
+
+			formattedOutput, _, pathHasChange, err = reviser.NewSourceFile(originProjectName, pathToProcess).Fix(options...)
+			if err != nil {
+				return fmt.Errorf("Failed to fix file %s: %w", pathToProcess, err)
+			}
+
+			if cfg.isUseCache {
+				sum := md5.Sum(formattedOutput)
+				hash := hex.EncodeToString(sum[:])
+				entry, entryErr := reviser.NewCacheEntry(pathToProcess, hash, cfg.useMetadataCache)
+				if entryErr != nil {
+					return fmt.Errorf("Failed to build cache entry for %s: %w", pathToProcess, entryErr)
+				}
+				if writeErr := reviser.WriteCacheEntry(cacheDir, pathToProcess, entry); writeErr != nil {
+					cacheFile := reviser.CacheFilePath(cacheDir, pathToProcess)
+					return fmt.Errorf("Failed to write cache file %s: %w", cacheFile, writeErr)
 				}
 			}
 

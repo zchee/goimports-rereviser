@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log"
 	"os"
@@ -42,6 +41,7 @@ type SourceDir struct {
 	sequentialThreshold int
 	cacheDir            string
 	cacheEnabled        bool
+	useMetadataCache    bool
 }
 
 func NewSourceDir(projectName, path string, isRecursive bool, excludes string) *SourceDir {
@@ -94,6 +94,14 @@ func (d *SourceDir) WithCache(cacheDir string) *SourceDir {
 	}
 	d.cacheDir = cacheDir
 	d.cacheEnabled = true
+	return d
+}
+
+// WithMetadataCache enables metadata-based cache skipping. The fast path relies
+// on file size and modification time to decide whether a file can be skipped,
+// falling back to hash verification when metadata is absent.
+func (d *SourceDir) WithMetadataCache() *SourceDir {
+	d.useMetadataCache = true
 	return d
 }
 
@@ -234,17 +242,22 @@ func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *
 			}
 
 			submit(func() {
-				content, _, hasChange, err := NewSourceFile(d.projectName, filePath).Fix(options...)
+				absPath := filePath
+				if !filepath.IsAbs(absPath) {
+					absPath = filepath.Join(d.dir, filePath)
+				}
+
+				content, _, hasChange, err := NewSourceFile(d.projectName, absPath).Fix(options...)
 				if err != nil {
 					errMu.Lock()
 					if *processingErr == nil {
-						*processingErr = fmt.Errorf("failed to fix %s: %w", filePath, err)
+						*processingErr = fmt.Errorf("failed to fix %s: %w", absPath, err)
 					}
 					errMu.Unlock()
 					return
 				}
 
-				if err := callback(hasChange, filePath, content); err != nil {
+				if err := callback(hasChange, absPath, content); err != nil {
 					errMu.Lock()
 					if *processingErr == nil {
 						*processingErr = err
@@ -254,14 +267,26 @@ func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *
 
 				if d.cacheEnabled {
 					hash := hashBytes(content)
-					if hash != "" {
-						if cacheErr := d.writeCache(filePath, hash); cacheErr != nil {
-							errMu.Lock()
-							if *processingErr == nil {
-								*processingErr = cacheErr
-							}
-							errMu.Unlock()
+					if hash == "" {
+						return
+					}
+
+					entry, metaErr := NewCacheEntry(absPath, hash, d.useMetadataCache)
+					if metaErr != nil {
+						errMu.Lock()
+						if *processingErr == nil {
+							*processingErr = metaErr
 						}
+						errMu.Unlock()
+						return
+					}
+
+					if cacheErr := d.writeCache(absPath, entry); cacheErr != nil {
+						errMu.Lock()
+						if *processingErr == nil {
+							*processingErr = cacheErr
+						}
+						errMu.Unlock()
 					}
 				}
 			})
@@ -420,29 +445,15 @@ func (d *SourceDir) shouldSkipByCache(path string) (bool, error) {
 		absPath = filepath.Join(d.dir, path)
 	}
 
-	cacheFile := d.cacheFilePath(absPath)
-	cachedHash, err := os.ReadFile(cacheFile)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return false, nil
-		}
-		return false, err
+	if d.useMetadataCache {
+		return ShouldSkipByMetadata(d.cacheDir, absPath)
 	}
 
-	currentHash, err := hashFile(absPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			_ = os.Remove(cacheFile)
-			return true, nil
-		}
-		return false, err
-	}
-
-	return string(cachedHash) == currentHash, nil
+	return ShouldSkipByHash(d.cacheDir, absPath)
 }
 
-func (d *SourceDir) writeCache(path, hash string) error {
-	if !d.cacheEnabled || d.cacheDir == "" || hash == "" {
+func (d *SourceDir) writeCache(path string, entry CacheEntry) error {
+	if !d.cacheEnabled || d.cacheDir == "" || entry.Hash == "" {
 		return nil
 	}
 
@@ -451,28 +462,7 @@ func (d *SourceDir) writeCache(path, hash string) error {
 		absPath = filepath.Join(d.dir, path)
 	}
 
-	cacheFile := d.cacheFilePath(absPath)
-	return os.WriteFile(cacheFile, []byte(hash), 0o644)
-}
-
-func (d *SourceDir) cacheFilePath(absPath string) string {
-	sum := md5.Sum([]byte(absPath))
-	return filepath.Join(d.cacheDir, hex.EncodeToString(sum[:]))
-}
-
-func hashFile(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	h := md5.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return WriteCacheEntry(d.cacheDir, absPath, entry)
 }
 
 func hashBytes(b []byte) string {

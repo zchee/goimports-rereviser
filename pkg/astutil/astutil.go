@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/sync/singleflight"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -31,8 +30,14 @@ type packageDepsCacheKey struct {
 // packageDepsCache provides thread-safe caching for LoadPackageDependencies
 var packageDepsCache sync.Map // map[packageDepsCacheKey]packageDepsCacheEntry
 
-// packageDepsGroup ensures only one load per unique key runs at a time.
-var packageDepsGroup singleflight.Group
+// packageDepsCalls tracks in-flight dependency loads to avoid redundant work.
+var packageDepsCalls sync.Map // map[packageDepsCacheKey]*packageDepsCall
+
+type packageDepsCall struct {
+	ready   chan struct{}
+	imports PackageImports
+	err     error
+}
 
 // loadPackageDependenciesFunc allows tests to stub the uncached loader.
 var loadPackageDependenciesFunc = loadPackageDependenciesUncached
@@ -41,6 +46,7 @@ var loadPackageDependenciesFunc = loadPackageDependenciesUncached
 // This is primarily for testing to prevent cache pollution between tests.
 func ClearPackageDepsCache() {
 	packageDepsCache = sync.Map{}
+	packageDepsCalls = sync.Map{}
 }
 
 // PackageImports is map of imports with their package names
@@ -122,20 +128,27 @@ func LoadPackageDependencies(dir, buildTag string) (PackageImports, error) {
 		return entry.imports, entry.err
 	}
 
-	// Not in cache, load with singleflight to deduplicate concurrent requests
-	value, err, _ := packageDepsGroup.Do(key.dir+"|"+key.buildTag, func() (any, error) {
-		return loadPackageDependenciesFunc(dir, buildTag)
-	})
-	if err != nil {
-		return PackageImports{}, err
+	// Not in cache, ensure only one loader runs per key.
+	callIface, loaded := packageDepsCalls.LoadOrStore(key, &packageDepsCall{ready: make(chan struct{})})
+	call := callIface.(*packageDepsCall)
+	if !loaded {
+		imports, err := loadPackageDependenciesFunc(dir, buildTag)
+		if err == nil {
+			entry := packageDepsCacheEntry{imports: imports, err: nil}
+			packageDepsCache.Store(key, entry)
+		}
+		call.imports = imports
+		call.err = err
+		close(call.ready)
+	} else {
+		<-call.ready
 	}
 
-	imports := value.(PackageImports)
+	if call.err != nil {
+		return PackageImports{}, call.err
+	}
 
-	entry := packageDepsCacheEntry{imports: imports, err: nil}
-	packageDepsCache.Store(key, entry)
-
-	return imports, nil
+	return call.imports, nil
 }
 
 // loadPackageDependenciesUncached is the actual implementation without caching

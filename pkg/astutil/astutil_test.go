@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/sync/singleflight"
 )
 
 func TestUsesImport(t *testing.T) {
@@ -357,7 +356,6 @@ func TestLoadPackageDependenciesSingleflight(t *testing.T) {
 	t.Parallel()
 
 	ClearPackageDepsCache()
-	packageDepsGroup = singleflight.Group{}
 
 	originalLoader := loadPackageDependenciesFunc
 	defer func() { loadPackageDependenciesFunc = originalLoader }()
