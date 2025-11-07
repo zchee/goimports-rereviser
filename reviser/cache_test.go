@@ -3,6 +3,7 @@ package reviser
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,8 +21,7 @@ func TestShouldSkipByMetadata(t *testing.T) {
 			t.Fatalf("write file: %v", err)
 		}
 
-		sum := md5.Sum(content)
-		hash := hex.EncodeToString(sum[:])
+		hash := ComputeContentHash(content)
 		entry, err := NewCacheEntry(filePath, hash, true)
 		if err != nil {
 			t.Fatalf("build cache entry: %v", err)
@@ -49,8 +49,7 @@ func TestShouldSkipByMetadata(t *testing.T) {
 			t.Fatalf("write file: %v", err)
 		}
 
-		sum := md5.Sum(initial)
-		hash := hex.EncodeToString(sum[:])
+		hash := ComputeContentHash(initial)
 		entry, err := NewCacheEntry(filePath, hash, true)
 		if err != nil {
 			t.Fatalf("build cache entry: %v", err)
@@ -84,10 +83,9 @@ func TestShouldSkipByMetadata(t *testing.T) {
 			t.Fatalf("write file: %v", err)
 		}
 
-		sum := md5.Sum(content)
-		hash := hex.EncodeToString(sum[:])
+		legacyHash := ComputeContentHash(content)
 		legacyCache := CacheFilePath(cacheDir, filePath)
-		if err := os.WriteFile(legacyCache, []byte(hash), 0o644); err != nil {
+		if err := os.WriteFile(legacyCache, []byte(legacyHash), 0o644); err != nil {
 			t.Fatalf("write legacy cache: %v", err)
 		}
 
@@ -99,4 +97,40 @@ func TestShouldSkipByMetadata(t *testing.T) {
 			t.Fatalf("expected legacy cache to fall back to hash verification")
 		}
 	})
+}
+
+func TestComputeContentHash_CollisionCheck(t *testing.T) {
+	samples := make([][]byte, 0, 256)
+
+	for i := 0; i < 64; i++ {
+		samples = append(samples, []byte(fmt.Sprintf("sample-%02d", i)))
+	}
+	for i := 0; i < 16; i++ {
+		samples = append(samples, []byte(fmt.Sprintf("package p%02d\n\nfunc f() {\n\tprintln(%d)\n}\n", i, i)))
+	}
+
+	md5Seen := make(map[string]int, len(samples))
+	xxh3Seen := make(map[string]int, len(samples))
+
+	for idx, sample := range samples {
+		md5Sum := md5.Sum(sample)
+		md5Hash := hex.EncodeToString(md5Sum[:])
+		if prev, ok := md5Seen[md5Hash]; ok {
+			t.Fatalf("md5 collision between sample %d and %d", prev, idx)
+		}
+		md5Seen[md5Hash] = idx
+
+		xxh3Hash := ComputeContentHash(sample)
+		if prev, ok := xxh3Seen[xxh3Hash]; ok {
+			t.Fatalf("xxh3 collision between sample %d and %d", prev, idx)
+		}
+		xxh3Seen[xxh3Hash] = idx
+	}
+
+	if len(md5Seen) != len(samples) {
+		t.Fatalf("expected unique md5 hashes, got %d/%d", len(md5Seen), len(samples))
+	}
+	if len(xxh3Seen) != len(samples) {
+		t.Fatalf("expected unique xxh3 hashes, got %d/%d", len(xxh3Seen), len(samples))
+	}
 }

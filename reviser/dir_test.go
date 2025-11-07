@@ -344,6 +344,27 @@ func main() {
 	}
 }
 
+func TestSourceDirCacheDefaults(t *testing.T) {
+	project := "github.com/zchee/goimports-rereviser/v4"
+	tmpDir := t.TempDir()
+	cacheDir := t.TempDir()
+
+	dir := NewSourceDir(project, tmpDir, false, "").WithCache(cacheDir)
+	if !dir.useMetadataCache {
+		t.Fatalf("expected metadata cache to be enabled by default once cache is configured")
+	}
+
+	dir = dir.WithoutMetadataCache()
+	if dir.useMetadataCache {
+		t.Fatalf("expected WithoutMetadataCache to disable metadata usage")
+	}
+
+	dir = dir.WithMetadataCache()
+	if !dir.useMetadataCache {
+		t.Fatalf("expected WithMetadataCache to re-enable metadata path")
+	}
+}
+
 func TestUnformattedCollection_List(t *testing.T) {
 	tests := []struct {
 		name    string
