@@ -1,8 +1,6 @@
 package reviser
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -78,6 +76,7 @@ func NewSourceDir(projectName, path string, isRecursive bool, excludes string) *
 		isRecursive:         isRecursive,
 		excludePatterns:     patterns,
 		sequentialThreshold: defaultParallelThreshold,
+		useMetadataCache:    true,
 	}
 }
 
@@ -94,6 +93,7 @@ func (d *SourceDir) WithCache(cacheDir string) *SourceDir {
 	}
 	d.cacheDir = cacheDir
 	d.cacheEnabled = true
+	d.useMetadataCache = true
 	return d
 }
 
@@ -102,6 +102,12 @@ func (d *SourceDir) WithCache(cacheDir string) *SourceDir {
 // falling back to hash verification when metadata is absent.
 func (d *SourceDir) WithMetadataCache() *SourceDir {
 	d.useMetadataCache = true
+	return d
+}
+
+// WithoutMetadataCache forces the legacy hash-only cache validation path.
+func (d *SourceDir) WithoutMetadataCache() *SourceDir {
+	d.useMetadataCache = false
 	return d
 }
 
@@ -231,20 +237,25 @@ func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *
 		if isGoFile(path) && !dirEntry.IsDir() && !d.isExcluded(path) {
 			filePath := path
 
-			if d.cacheEnabled {
-				skip, cacheErr := d.shouldSkipByCache(filePath)
-				if cacheErr != nil {
-					return cacheErr
-				}
-				if skip {
-					return nil
-				}
-			}
-
 			submit(func() {
 				absPath := filePath
 				if !filepath.IsAbs(absPath) {
 					absPath = filepath.Join(d.dir, filePath)
+				}
+
+				if d.cacheEnabled {
+					skip, cacheErr := ShouldSkip(d.cacheDir, absPath, d.useMetadataCache)
+					if cacheErr != nil {
+						errMu.Lock()
+						if *processingErr == nil {
+							*processingErr = cacheErr
+						}
+						errMu.Unlock()
+						return
+					}
+					if skip {
+						return
+					}
 				}
 
 				content, _, hasChange, err := NewSourceFile(d.projectName, absPath).Fix(options...)
@@ -266,7 +277,7 @@ func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *
 				}
 
 				if d.cacheEnabled {
-					hash := hashBytes(content)
+					hash := ComputeContentHash(content)
 					if hash == "" {
 						return
 					}
@@ -445,11 +456,7 @@ func (d *SourceDir) shouldSkipByCache(path string) (bool, error) {
 		absPath = filepath.Join(d.dir, path)
 	}
 
-	if d.useMetadataCache {
-		return ShouldSkipByMetadata(d.cacheDir, absPath)
-	}
-
-	return ShouldSkipByHash(d.cacheDir, absPath)
+	return ShouldSkip(d.cacheDir, absPath, d.useMetadataCache)
 }
 
 func (d *SourceDir) writeCache(path string, entry CacheEntry) error {
@@ -463,9 +470,4 @@ func (d *SourceDir) writeCache(path string, entry CacheEntry) error {
 	}
 
 	return WriteCacheEntry(d.cacheDir, absPath, entry)
-}
-
-func hashBytes(b []byte) string {
-	sum := md5.Sum(b)
-	return hex.EncodeToString(sum[:])
 }

@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -72,7 +70,7 @@ dotted - imports with "." alias.`,
 	flag.BoolVar(&cfg.setExitStatus, "set-exit-status", false, `set the exit status to 1 if a change is needed/made. Optional parameter.`)
 	flag.BoolVar(&cfg.isRecursive, "recursive", false, `Apply rules recursively if target is a directory. In case of ./... execution will be recursively applied by default. Optional parameter.`)
 	flag.BoolVar(&cfg.isUseCache, "use-cache", false, `Use cache to improve performance. Optional parameter.`)
-	flag.BoolVar(&cfg.useMetadataCache, "cache-fast-skip", false, `Experimental: rely on file metadata to skip cached files without re-reading them. Requires -use-cache.`)
+	flag.BoolVar(&cfg.useMetadataCache, "cache-fast-skip", true, `Metadata-first cache path (default). Uses file metadata to skip hashing unchanged files; disable with -cache-fast-skip=false.`)
 
 	flag.BoolVar(&cfg.shouldRemoveUnusedImports, "rm-unused", false, `Remove unused imports. Optional parameter.`)
 	flag.BoolVar(&cfg.shouldSetAlias, "set-alias", false, `Set alias for versioned package names, like 'github.com/go-pg/pg/v9'. In this case import will be set as 'pg \"github.com/go-pg/pg/v9\"'. Optional parameter.`)
@@ -227,8 +225,8 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 						WithWorkerPool(getSharedPool())
 					if cfg.isUseCache && cacheDir != "" {
 						dir = dir.WithCache(cacheDir)
-						if cfg.useMetadataCache {
-							dir = dir.WithMetadataCache()
+						if !cfg.useMetadataCache {
+							dir = dir.WithoutMetadataCache()
 						}
 					}
 
@@ -249,8 +247,8 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 					WithWorkerPool(getSharedPool())
 				if cfg.isUseCache && cacheDir != "" {
 					dir = dir.WithCache(cacheDir)
-					if cfg.useMetadataCache {
-						dir = dir.WithMetadataCache()
+					if !cfg.useMetadataCache {
+						dir = dir.WithoutMetadataCache()
 					}
 				}
 
@@ -274,13 +272,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 			)
 
 			if cfg.isUseCache {
-				var skip bool
-				var checkErr error
-				if cfg.useMetadataCache {
-					skip, checkErr = reviser.ShouldSkipByMetadata(cacheDir, pathToProcess)
-				} else {
-					skip, checkErr = reviser.ShouldSkipByHash(cacheDir, pathToProcess)
-				}
+				skip, checkErr := reviser.ShouldSkip(cacheDir, pathToProcess, cfg.useMetadataCache)
 				if checkErr != nil {
 					return fmt.Errorf("Failed to evaluate cache for %s: %w", pathToProcess, checkErr)
 				}
@@ -295,8 +287,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 			}
 
 			if cfg.isUseCache {
-				sum := md5.Sum(formattedOutput)
-				hash := hex.EncodeToString(sum[:])
+				hash := reviser.ComputeContentHash(formattedOutput)
 				entry, entryErr := reviser.NewCacheEntry(pathToProcess, hash, cfg.useMetadataCache)
 				if entryErr != nil {
 					return fmt.Errorf("Failed to build cache entry for %s: %w", pathToProcess, entryErr)

@@ -2,14 +2,15 @@ package reviser
 
 import (
 	"bytes"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/zeebo/xxh3"
 )
 
 // CacheEntry represents the cached state of a file.
@@ -24,6 +25,21 @@ type CacheEntry struct {
 func cacheFilePath(cacheDir, absPath string) string {
 	sum := hashPath(absPath)
 	return filepath.Join(cacheDir, sum)
+}
+
+func encodeHash(sum uint64) string {
+	return fmt.Sprintf("%016x", sum)
+}
+
+// ComputeContentHash returns the deterministic digest for arbitrary content using xxh3.
+func ComputeContentHash(data []byte) string {
+	return encodeHash(xxh3.Hash(data))
+}
+
+// hashPath returns the xxh3 digest of the provided absolute path. Directory and
+// single-file flows share this helper to guarantee consistent cache keying.
+func hashPath(absPath string) string {
+	return encodeHash(xxh3.HashString(absPath))
 }
 
 // readCacheEntry loads the cache entry for absPath. It returns (nil, ErrNotExist)
@@ -65,13 +81,6 @@ func writeCacheEntry(cacheDir, absPath string, entry CacheEntry) error {
 		return err
 	}
 	return os.WriteFile(cacheFile, payload, 0o644)
-}
-
-// hashPath returns the md5 sum (hex-encoded) of the provided absolute path.
-// It is extracted here so single-file and directory cache flows use an identical
-// mapping without duplicating the hashing logic.
-func hashPath(absPath string) string {
-	return md5Sum(absPath)
 }
 
 func fileMetadata(path string) (size int64, modTime int64, err error) {
@@ -120,11 +129,6 @@ func NewCacheEntry(absPath, hash string, withMetadata bool) (CacheEntry, error) 
 	return cacheEntryForMetadata(hash, size, modTime), nil
 }
 
-func md5Sum(text string) string {
-	s := md5.Sum([]byte(text))
-	return hex.EncodeToString(s[:])
-}
-
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -132,12 +136,12 @@ func hashFile(path string) (string, error) {
 	}
 	defer f.Close()
 
-	h := md5.New()
+	h := xxh3.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err
 	}
 
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return encodeHash(h.Sum64()), nil
 }
 
 // ShouldSkipByHash verifies content hash equality, matching the legacy cache
@@ -218,4 +222,16 @@ func ReadCacheEntry(cacheDir, absPath string) (*CacheEntry, error) {
 // single-file and directory workflows.
 func CacheFilePath(cacheDir, absPath string) string {
 	return cacheFilePath(cacheDir, absPath)
+}
+
+// ShouldSkip routes to the preferred strategy (metadata-first by default) and
+// falls back to hash-based verification when metadata is unavailable.
+func ShouldSkip(cacheDir, absPath string, preferMetadata bool) (bool, error) {
+	if cacheDir == "" {
+		return false, nil
+	}
+	if preferMetadata {
+		return ShouldSkipByMetadata(cacheDir, absPath)
+	}
+	return ShouldSkipByHash(cacheDir, absPath)
 }
