@@ -3,14 +3,53 @@ package module
 import (
 	"os"
 	"path/filepath"
+	"sync"
 
 	"golang.org/x/mod/modfile"
 )
 
 const goModFilename = "go.mod"
 
+// moduleNameCacheEntry represents a cached result for module Name lookups
+type moduleNameCacheEntry struct {
+	name string
+	err  error
+}
+
+// moduleNameCache provides thread-safe caching for module Name lookups
+var moduleNameCache sync.Map // map[string]moduleNameCacheEntry
+
+// ClearModuleNameCache clears the module name cache.
+// This is primarily for testing to prevent cache pollution between tests.
+func ClearModuleNameCache() {
+	moduleNameCache = sync.Map{}
+}
+
 // Name reads module value from ./go.mod
+// Results are cached for performance. Multiple calls with the same root path
+// will return cached results. Only successful results are cached; errors are
+// not cached to avoid persisting transient failures.
 func Name(goModRootPath string) (string, error) {
+	// Try to load from cache
+	if cached, ok := moduleNameCache.Load(goModRootPath); ok {
+		entry := cached.(moduleNameCacheEntry)
+		return entry.name, entry.err
+	}
+
+	// Not in cache, load
+	name, err := nameUncached(goModRootPath)
+
+	// Only cache successful results, not errors
+	if err == nil {
+		entry := moduleNameCacheEntry{name: name, err: nil}
+		moduleNameCache.Store(goModRootPath, entry)
+	}
+
+	return name, err
+}
+
+// nameUncached is the actual implementation without caching
+func nameUncached(goModRootPath string) (string, error) {
 	goModFile := filepath.Join(goModRootPath, goModFilename)
 
 	data, err := os.ReadFile(goModFile)

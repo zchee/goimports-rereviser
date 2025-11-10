@@ -5,8 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestGoModRootPathAndName(t *testing.T) {
@@ -16,33 +15,51 @@ func TestGoModRootPathAndName(t *testing.T) {
 		t.Parallel()
 
 		dir, err := os.Getwd()
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 
 		goModRootPath, err := GoModRootPath(dir)
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 
 		got, err := Name(goModRootPath)
-		require.NoError(t, err)
-		assert.Equal(t, "github.com/zchee/goimports-rereviser/v4", got)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if diff := cmp.Diff("github.com/zchee/goimports-rereviser/v4", got); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
 	})
 
 	t.Run("path is not set error", func(t *testing.T) {
 		t.Parallel()
 
 		goModPath, err := GoModRootPath("")
-		assert.Error(t, err)
-		assert.Empty(t, goModPath)
+		if err == nil {
+			t.Error("expected error, got nil")
+		}
+		if goModPath != "" {
+			t.Errorf("expected empty string, got: %v", goModPath)
+		}
 	})
 
 	t.Run("path is empty", func(t *testing.T) {
 		t.Parallel()
 
 		goModPath, err := GoModRootPath(".")
-		assert.NoError(t, err)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 
 		got, err := Name(goModPath)
-		assert.Error(t, err)
-		assert.Empty(t, got)
+		if err == nil {
+			t.Error("expected error, got nil")
+		}
+		if got != "" {
+			t.Errorf("expected empty string, got: %v", got)
+		}
 	})
 }
 
@@ -58,8 +75,12 @@ func TestName(t *testing.T) {
 			prepareFn: func() string {
 				dir := t.TempDir()
 				f, err := os.Create(filepath.Join(dir, "go.mod"))
-				require.NoError(t, err)
-				require.NoError(t, f.Close())
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if err := f.Close(); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
 				return dir
 			},
 		},
@@ -68,10 +89,16 @@ func TestName(t *testing.T) {
 			prepareFn: func() string {
 				dir := t.TempDir()
 				file, err := os.Create(filepath.Join(dir, "go.mod"))
-				require.NoError(t, err)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
 				_, err = file.WriteString("mod test")
-				require.NoError(t, err)
-				require.NoError(t, file.Close())
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if err := file.Close(); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
 				return dir
 			},
 		},
@@ -82,8 +109,12 @@ func TestName(t *testing.T) {
 
 			goModRootPath := tt.prepareFn()
 			got, err := Name(goModRootPath)
-			require.Error(t, err)
-			assert.Empty(t, got)
+			if err == nil {
+				t.Error("expected error, got nil")
+			}
+			if got != "" {
+				t.Errorf("expected empty string, got: %v", got)
+			}
 		})
 	}
 }
@@ -106,7 +137,9 @@ func TestDetermineProjectName(t *testing.T) {
 				projectName: "",
 				filePath: func() string {
 					dir, err := os.Getwd()
-					require.NoError(t, err)
+					if err != nil {
+						t.Fatalf("unexpected error: %v", err)
+					}
 					return filepath.Join(dir, "module.go")
 				}(),
 			},
@@ -127,8 +160,12 @@ func TestDetermineProjectName(t *testing.T) {
 			t.Parallel()
 
 			got, err := DetermineProjectName(tt.args.projectName, tt.args.filePath)
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }

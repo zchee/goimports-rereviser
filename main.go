@@ -1,484 +1,348 @@
 package main
 
 import (
-	"crypto/md5"
-	"encoding/hex"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/user"
-	"path"
 	"path/filepath"
-	"regexp"
-	"runtime/debug"
-	"strings"
+	"runtime"
+	"sync"
 
-	"github.com/zchee/goimports-rereviser/v4/helper"
+	"github.com/alitto/pond"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/zchee/goimports-rereviser/v4/pkg/module"
 	"github.com/zchee/goimports-rereviser/v4/reviser"
 )
 
-const (
-	projectNameArg         = "project-name"
-	versionArg             = "version"
-	versionOnlyArg         = "version-only"
-	removeUnusedImportsArg = "rm-unused"
-	setAliasArg            = "set-alias"
-	companyPkgPrefixesArg  = "company-prefixes"
-	outputArg              = "output"
-	importsOrderArg        = "imports-order"
-	formatArg              = "format"
-	listDiffFileNameArg    = "list-diff"
-	setExitStatusArg       = "set-exit-status"
-	recursiveArg           = "recursive"
-	useCacheArg            = "use-cache"
-	applyToGeneratedFiles  = "apply-to-generated-files"
-	excludesArg            = "excludes"
-	// using a regex here so that this will work with forked repos (at least on github.com)
-	modulePathRegex  = `^github.com/[\w-]+/goimports-rereviser(/v\d+)?@?`
-	separateNamedArg = "separate-named"
-
-	// Deprecated options
-	localArg    = "local"
-	filePathArg = "file-path"
-)
-
-// Project build specific vars
+// Sets injected via ldflags at build time.
 var (
 	Tag       string
 	Commit    string
 	SourceURL string
 	GoVersion string
-
-	shouldShowVersion           *bool
-	shouldShowVersionOnly       *bool
-	shouldRemoveUnusedImports   *bool
-	shouldSetAlias              *bool
-	shouldFormat                *bool
-	shouldApplyToGeneratedFiles *bool
-	shouldSeparateNamedImports  *bool
-	listFileName                *bool
-	setExitStatus               *bool
-	isRecursive                 *bool
-	isUseCache                  *bool
-	modulePathMatcher           = regexp.MustCompile(modulePathRegex)
 )
 
-var (
-	projectName, companyPkgPrefixes, output, importsOrder, excludes string
+// Config holds goimports-rereviser configuration options.
+type Config struct {
+	projectName        string
+	companyPkgPrefixes string
+	output             string
+	excludes           string
+	importsOrder       string
 
-	// Deprecated
-	localPkgPrefixes, filePath string
-)
+	shouldShowVersionOnly bool
+	shouldShowVersion     bool
+
+	listFileName     bool
+	setExitStatus    bool
+	isRecursive      bool
+	isUseCache       bool
+	useMetadataCache bool
+
+	shouldRemoveUnusedImports   bool
+	shouldSetAlias              bool
+	shouldFormat                bool
+	shouldSeparateNamedImports  bool
+	shouldApplyToGeneratedFiles bool
+}
+
+var cfg = Config{}
 
 func init() {
-	flag.StringVar(
-		&filePath,
-		filePathArg,
-		"",
-		"Deprecated. Put file name as an argument(last item) of command line.",
+	flag.StringVar(&cfg.projectName, "project-name", "", `Your project name(ex.: github.com/zchee/goimports-rereviser). Optional parameter.`)
+	flag.StringVar(&cfg.companyPkgPrefixes, "company-prefixes", "", `Company package prefixes which will be placed after 3rd-party group by default(if defined). Values should be comma-separated. Optional parameters.`)
+	flag.StringVar(&cfg.output, "output", "file", `Can be "file", "write" or "stdout". Whether to write the formatted content back to the file or to stdout. When "write" together with "-list-diff" will list the file name and write back to the file. Optional parameter.`)
+	flag.StringVar(&cfg.excludes, "excludes", "", `Exclude files or dirs, example: '.git/,proto/*.go'.`)
+	flag.StringVar(&cfg.importsOrder, "imports-order", "std,general,company,project", `Your imports groups can be sorted in your way. Optional parameter.
+std - std import group.
+general - libs for general purpose.
+company - inter-org or your company libs(if you set '-company-prefixes'-option, then 4th group will be split separately. In other case, it will be the part of general purpose libs).
+project - your local project dependencies.
+blanked - imports with "_" alias.
+dotted - imports with "." alias.`,
 	)
+	flag.BoolVar(&cfg.listFileName, "list-diff", false, `Option will list files whose formatting differs from goimports-rereviser. Optional parameter.`)
+	flag.BoolVar(&cfg.setExitStatus, "set-exit-status", false, `set the exit status to 1 if a change is needed/made. Optional parameter.`)
+	flag.BoolVar(&cfg.isRecursive, "recursive", false, `Apply rules recursively if target is a directory. In case of ./... execution will be recursively applied by default. Optional parameter.`)
+	flag.BoolVar(&cfg.isUseCache, "use-cache", false, `Use cache to improve performance. Optional parameter.`)
+	flag.BoolVar(&cfg.useMetadataCache, "cache-fast-skip", true, `Metadata-first cache path (default). Uses file metadata to skip hashing unchanged files; disable with -cache-fast-skip=false.`)
 
-	flag.StringVar(
-		&excludes,
-		excludesArg,
-		"",
-		"Exclude files or dirs, example: '.git/,proto/*.go'.",
-	)
-
-	flag.StringVar(
-		&projectName,
-		projectNameArg,
-		"",
-		"Your project name(ex.: github.com/zchee/goimports-rereviser). Optional parameter.",
-	)
-
-	flag.StringVar(
-		&companyPkgPrefixes,
-		companyPkgPrefixesArg,
-		"",
-		"Company package prefixes which will be placed after 3rd-party group by default(if defined). Values should be comma-separated. Optional parameters.",
-	)
-
-	flag.StringVar(
-		&localPkgPrefixes,
-		localArg,
-		"",
-		"Deprecated",
-	)
-
-	flag.StringVar(
-		&output,
-		outputArg,
-		"file",
-		`Can be "file", "write" or "stdout". Whether to write the formatted content back to the file or to stdout. When "write" together with "-list-diff" will list the file name and write back to the file. Optional parameter.`,
-	)
-
-	flag.StringVar(
-		&importsOrder,
-		importsOrderArg,
-		"std,general,company,project",
-		`Your imports groups can be sorted in your way. 
-std - std import group; 
-general - libs for general purpose; 
-company - inter-org or your company libs(if you set '-company-prefixes'-option, then 4th group will be split separately. In other case, it will be the part of general purpose libs); 
-project - your local project dependencies;
-blanked - imports with "_" alias;
-dotted - imports with "." alias.
-Optional parameter.`,
-	)
-
-	listFileName = flag.Bool(
-		listDiffFileNameArg,
-		false,
-		"Option will list files whose formatting differs from goimports-rereviser. Optional parameter.",
-	)
-
-	setExitStatus = flag.Bool(
-		setExitStatusArg,
-		false,
-		"set the exit status to 1 if a change is needed/made. Optional parameter.",
-	)
-
-	shouldRemoveUnusedImports = flag.Bool(
-		removeUnusedImportsArg,
-		false,
-		"Remove unused imports. Optional parameter.",
-	)
-
-	shouldSetAlias = flag.Bool(
-		setAliasArg,
-		false,
-		"Set alias for versioned package names, like 'github.com/go-pg/pg/v9'. "+
-			"In this case import will be set as 'pg \"github.com/go-pg/pg/v9\"'. Optional parameter.",
-	)
-
-	shouldFormat = flag.Bool(
-		formatArg,
-		false,
-		"Option will perform additional formatting. Optional parameter.",
-	)
-
-	shouldSeparateNamedImports = flag.Bool(
-		separateNamedArg,
-		false,
-		"Option will separate named imports from the rest of the imports, per group. Optional parameter.",
-	)
-
-	isRecursive = flag.Bool(
-		recursiveArg,
-		false,
-		"Apply rules recursively if target is a directory. In case of ./... execution will be recursively applied by default. Optional parameter.",
-	)
-
-	isUseCache = flag.Bool(
-		useCacheArg,
-		false,
-		"Use cache to improve performance. Optional parameter.",
-	)
-
-	shouldApplyToGeneratedFiles = flag.Bool(
-		applyToGeneratedFiles,
-		false,
-		"Apply imports sorting and formatting(if the option is set) to generated files. Generated file is a file with first comment which starts with comment '// Code generated'. Optional parameter.",
-	)
-
-	shouldShowVersion = flag.Bool(
-		versionArg,
-		false,
-		"Show version information",
-	)
-
-	shouldShowVersionOnly = flag.Bool(
-		versionOnlyArg,
-		false,
-		"Show only the version string",
-	)
+	flag.BoolVar(&cfg.shouldRemoveUnusedImports, "rm-unused", false, `Remove unused imports. Optional parameter.`)
+	flag.BoolVar(&cfg.shouldSetAlias, "set-alias", false, `Set alias for versioned package names, like 'github.com/go-pg/pg/v9'. In this case import will be set as 'pg \"github.com/go-pg/pg/v9\"'. Optional parameter.`)
+	flag.BoolVar(&cfg.shouldFormat, "format", false, `Option will perform additional formatting. Optional parameter.`)
+	flag.BoolVar(&cfg.shouldSeparateNamedImports, "separate-named", false, `Option will separate named imports from the rest of the imports, per group. Optional parameter.`)
+	flag.BoolVar(&cfg.shouldApplyToGeneratedFiles, "apply-to-generated-files", false, `Apply imports sorting and formatting(if the option is set) to generated files. Generated file is a file with first comment which starts with comment '// Code generated'. Optional parameter.`)
+	flag.BoolVar(&cfg.shouldShowVersion, "version", false, `Show version information`)
+	flag.BoolVar(&cfg.shouldShowVersionOnly, "version-only", false, `Show only the version string`)
 }
 
-func printUsage() {
-	if _, err := fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0]); err != nil {
-		log.Fatalf("failed to print usage: %s", err)
-	}
+type exitCode = int
 
-	flag.PrintDefaults()
-}
+const (
+	exitSuccess exitCode = iota
+	exitError
 
-// printUsageAndExit prints usage and exits with status 0
-// if err is nil, otherwise it prints the error and exits with status 1
-func printUsageAndExit(err error) {
-	printUsage()
-	if err != nil {
-		log.Fatalf("%s", err)
-	}
-	os.Exit(0)
-}
-
-func getBuildInfo() *debug.BuildInfo {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return nil
-	}
-	return bi
-}
-
-func getMyModuleInfo(bi *debug.BuildInfo) (*debug.Module, error) {
-	if bi == nil {
-		return nil, errors.New("no build info available")
-	}
-	// depending on the context in which we are called, the main module may not be set
-	if bi.Main.Path != "" {
-		return &bi.Main, nil
-	}
-	// if the main module is not set, we need to find the dep that contains our module
-	for _, m := range bi.Deps {
-		if modulePathMatcher.MatchString(m.Path) {
-			return m, nil
-		}
-	}
-	return nil, errors.New("no matching module found in build info")
-}
-
-func printVersion() {
-	if Tag != "" {
-		fmt.Printf(
-			"version: %s\nbuilt with: %s\ntag: %s\ncommit: %s\nsource: %s\n",
-			strings.TrimPrefix(Tag, "v"),
-			GoVersion,
-			Tag,
-			Commit,
-			SourceURL,
-		)
-		return
-	}
-	bi := getBuildInfo()
-	myModule, err := getMyModuleInfo(bi)
-	if err != nil {
-		log.Fatalf("failed to get my module info: %s", err)
-	}
-	fmt.Printf(
-		"version: %s\nbuilt with: %s\ntag: %s\ncommit: %s\nsource: %s\n",
-		strings.TrimPrefix(myModule.Version, "v"),
-		bi.GoVersion,
-		myModule.Version,
-		"n/a",
-		myModule.Path,
-	)
-}
-
-func printVersionOnly() {
-	if Tag != "" {
-		fmt.Println(strings.TrimPrefix(Tag, "v"))
-		return
-	}
-	bi := getBuildInfo()
-	myModule, err := getMyModuleInfo(bi)
-	if err != nil {
-		log.Fatalf("failed to get my module info: %s", err)
-	}
-	fmt.Println(strings.TrimPrefix(myModule.Version, "v"))
-}
+	exitUsage = exitSuccess
+)
 
 func main() {
-	deprecatedMessagesCh := make(chan string, 10)
+	os.Exit(run())
+}
+
+func run() exitCode {
 	flag.Parse()
 
-	if shouldShowVersionOnly != nil && *shouldShowVersionOnly {
-		printVersionOnly()
-		return
+	if cfg.shouldShowVersionOnly {
+		return printVersionOnly()
 	}
 
-	if shouldShowVersion != nil && *shouldShowVersion {
-		printVersion()
-		return
+	if cfg.shouldShowVersion {
+		return printVersion()
+	}
+
+	if cfg.useMetadataCache && !cfg.isUseCache {
+		return printUsageAndExit(errors.New("cache-fast-skip requires --use-cache"))
 	}
 
 	originPaths := flag.Args()
-
-	if filePath != "" {
-		deprecatedMessagesCh <- fmt.Sprintf("-%s is deprecated. Put file name(s) as last argument to the command(Example: goimports-rereviser -rm-unused -set-alias -format goimports-rereviser/main.go)", filePathArg)
-		originPaths = append(originPaths, filePath)
-	}
-
 	if len(originPaths) == 0 {
-		printUsageAndExit(errors.New("no file(s) or directory(ies) specified on input"))
+		return printUsageAndExit(errors.New("no file(s) or directory(ies) specified on input"))
 	}
 
 	if len(originPaths) == 1 && originPaths[0] == "-" {
 		originPaths[0] = reviser.StandardInput
 		if err := validateRequiredParam(originPaths[0]); err != nil {
-			printUsageAndExit(err)
+			return printUsageAndExit(err)
 		}
 	}
 
-	var options reviser.SourceFileOptions
-	if shouldRemoveUnusedImports != nil && *shouldRemoveUnusedImports {
-		options = append(options, reviser.WithRemovingUnusedImports)
-	}
-
-	if shouldSetAlias != nil && *shouldSetAlias {
-		options = append(options, reviser.WithUsingAliasForVersionSuffix)
-	}
-
-	if shouldFormat != nil && *shouldFormat {
-		options = append(options, reviser.WithCodeFormatting)
-	}
-
-	if shouldApplyToGeneratedFiles == nil || !*shouldApplyToGeneratedFiles {
-		options = append(options, reviser.WithSkipGeneratedFile)
-	}
-
-	if shouldSeparateNamedImports != nil && *shouldSeparateNamedImports {
-		options = append(options, reviser.WithSeparatedNamedImports)
-	}
-
-	if localPkgPrefixes != "" {
-		if companyPkgPrefixes != "" {
-			companyPkgPrefixes = localPkgPrefixes
-		}
-		deprecatedMessagesCh <- fmt.Sprintf(`-%s is deprecated and will be removed soon. Use -%s instead.`, localArg, companyPkgPrefixesArg)
-	}
-
-	if companyPkgPrefixes != "" {
-		options = append(options, reviser.WithCompanyPackagePrefixes(companyPkgPrefixes))
-	}
-
-	if importsOrder != "" {
-		order, err := reviser.StringToImportsOrders(importsOrder)
+	var opts reviser.SourceFileOptions
+	if cfg.importsOrder != "" {
+		order, err := reviser.StringToImportsOrders(cfg.importsOrder)
 		if err != nil {
-			printUsageAndExit(err)
+			return printUsageAndExit(err)
 		}
-		options = append(options, reviser.WithImportsOrder(order))
+		opts = append(opts, reviser.WithImportsOrder(order))
+	}
+	if cfg.shouldRemoveUnusedImports {
+		opts = append(opts, reviser.WithRemovingUnusedImports)
+	}
+	if cfg.shouldSetAlias {
+		opts = append(opts, reviser.WithUsingAliasForVersionSuffix)
+	}
+	if cfg.shouldFormat {
+		opts = append(opts, reviser.WithCodeFormatting)
+	}
+	if cfg.shouldSeparateNamedImports {
+		opts = append(opts, reviser.WithSeparatedNamedImports)
+	}
+	if !cfg.shouldApplyToGeneratedFiles {
+		opts = append(opts, reviser.WithSkipGeneratedFile)
+	}
+	if cfg.companyPkgPrefixes != "" {
+		opts = append(opts, reviser.WithCompanyPackagePrefixes(cfg.companyPkgPrefixes))
 	}
 
-	close(deprecatedMessagesCh)
-	var hasChange bool
 	log.Printf("Paths: %v\n", originPaths)
-	for _, originPath := range originPaths {
-		log.Printf("Processing %s\n", originPath)
-		originProjectName, err := helper.DetermineProjectName(projectName, originPath, helper.OSGetwdOption)
-		if err != nil {
-			printUsageAndExit(fmt.Errorf("Could not determine project name for path %s: %s", originPath, err))
-		}
-		if _, ok := reviser.IsDir(originPath); ok {
-			if *listFileName {
-				unformattedFiles, err := reviser.NewSourceDir(originProjectName, originPath, *isRecursive, excludes).Find(options...)
-				if err != nil {
-					log.Fatalf("Failed to find unformatted files %s: %+v\n", originPath, err)
-				}
 
-				if unformattedFiles != nil {
-					fmt.Printf("%s\n", unformattedFiles.String())
-					if *setExitStatus {
-						os.Exit(1)
-					}
-				}
-
-				return
-			}
-
-			err := reviser.NewSourceDir(originProjectName, originPath, *isRecursive, excludes).Fix(options...)
-			if err != nil {
-				log.Fatalf("Failed to fix directory %s: %+v\n", originPath, err)
-			}
-
-			continue
+	var cacheDir string
+	if cfg.isUseCache {
+		if xdgCacheDir := os.Getenv("XDG_CACHE_HOME"); xdgCacheDir != "" {
+			cacheDir = filepath.Join(xdgCacheDir, "goimports-rereviser")
 		}
 
-		if originPath != reviser.StandardInput {
-			originPath, err = filepath.Abs(originPath)
-			if err != nil {
-				log.Fatalf("Failed to get abs path: %+v\n", err)
-			}
-		}
-
-		var formattedOutput []byte
-		var pathHasChange bool
-		if *isUseCache {
-			hash := md5.Sum([]byte(originPath))
-
-			u, err := user.Current()
+		if cacheDir == "" {
+			usr, err := user.Current()
 			if err != nil {
 				log.Fatalf("Failed to get current user: %+v\n", err)
 			}
-			cacheDir := path.Join(u.HomeDir, ".cache", "goimports-rereviser")
-			if err = os.MkdirAll(cacheDir, os.ModePerm); err != nil {
-				log.Fatalf("Failed to create cache directory: %+v\n", err)
-			}
-			cacheFile := path.Join(cacheDir, hex.EncodeToString(hash[:]))
-
-			var cacheContent, fileContent []byte
-			if cacheContent, err = os.ReadFile(cacheFile); err == nil {
-				// compare file content hash
-				var fileHashHex string
-				if fileContent, err = os.ReadFile(originPath); err == nil {
-					fileHash := md5.Sum(fileContent)
-					fileHashHex = hex.EncodeToString(fileHash[:])
-				}
-				if string(cacheContent) == fileHashHex {
-					// point to cache
-					continue
-				}
-			}
-			formattedOutput, _, pathHasChange, err = reviser.NewSourceFile(originProjectName, originPath).Fix(options...)
-			if err != nil {
-				log.Fatalf("Failed to fix file: %+v\n", err)
-			}
-			fileHash := md5.Sum(formattedOutput)
-			fileHashHex := hex.EncodeToString(fileHash[:])
-			if fileInfo, err := os.Stat(cacheFile); err != nil || fileInfo.IsDir() {
-				if _, err = os.Create(cacheFile); err != nil {
-					log.Fatalf("Failed to create cache file: %+v\n", err)
-				}
-			}
-			file, _ := os.OpenFile(cacheFile, os.O_RDWR, os.ModePerm)
-			defer func() {
-				_ = file.Close()
-			}()
-			if err = file.Truncate(0); err != nil {
-				log.Fatalf("Failed file truncate: %+v\n", err)
-			}
-			if _, err = file.Seek(0, 0); err != nil {
-				log.Fatalf("Failed file seek: %+v\n", err)
-			}
-			if _, err = file.WriteString(fileHashHex); err != nil {
-				log.Fatalf("Failed to write file hash: %+v\n", err)
-			}
-		} else {
-			formattedOutput, _, pathHasChange, err = reviser.NewSourceFile(originProjectName, originPath).Fix(options...)
-			if err != nil {
-				log.Fatalf("Failed to fix file: %+v\n", err)
-			}
-		}
-		if !hasChange && pathHasChange {
-			hasChange = pathHasChange
+			cacheDir = filepath.Join(usr.HomeDir, ".cache", "goimports-rereviser")
 		}
 
-		resultPostProcess(hasChange, originPath, formattedOutput)
+		if err := os.MkdirAll(cacheDir, os.ModePerm); err != nil {
+			log.Fatalf("Failed to create cache directory: %+v\n", err)
+		}
 	}
-	printDeprecations(deprecatedMessagesCh)
-	if hasChange && *setExitStatus {
-		os.Exit(1)
+
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(context.Canceled)
+
+	hasChange, err := processPaths(ctx, &cfg, originPaths, cacheDir, opts)
+	if err != nil {
+		return printUsageAndExit(err)
 	}
+
+	if hasChange && cfg.setExitStatus {
+		log.Println("detect changed files")
+		return exitError
+	}
+
+	return exitSuccess
 }
 
-func resultPostProcess(hasChange bool, originFilePath string, formattedOutput []byte) {
+func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheDir string, options reviser.SourceFileOptions) (bool, error) {
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	default:
+	}
+
+	var (
+		hasChange      bool
+		hasChangeMu    sync.Mutex
+		sharedPool     *pond.WorkerPool
+		sharedPoolOnce sync.Once
+	)
+
+	getSharedPool := func() *pond.WorkerPool {
+		sharedPoolOnce.Do(func() {
+			workerCount := runtime.GOMAXPROCS(0) * 2
+			sharedPool = pond.New(workerCount, 0)
+		})
+		return sharedPool
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	for _, original := range originPaths {
+		pathValue := original
+
+		g.Go(func() error {
+			log.Printf("Processing %s\n", pathValue)
+			originProjectName, err := determineProjectName(cfg.projectName, pathValue)
+			if err != nil {
+				return fmt.Errorf("Could not determine project name for path %s: %w", pathValue, err)
+			}
+
+			if _, ok := reviser.IsDir(pathValue); ok {
+				if cfg.listFileName {
+					dir := reviser.NewSourceDir(originProjectName, pathValue, cfg.isRecursive, cfg.excludes).
+						WithWorkerPool(getSharedPool())
+					if cfg.isUseCache && cacheDir != "" {
+						dir = dir.WithCache(cacheDir)
+						if !cfg.useMetadataCache {
+							dir = dir.WithoutMetadataCache()
+						}
+					}
+
+					unformattedFiles, err := dir.Find(options...)
+					if err != nil {
+						return fmt.Errorf("Failed to find unformatted files %s: %w", pathValue, err)
+					}
+					if unformattedFiles != nil {
+						fmt.Printf("%s\n", unformattedFiles.String())
+						if cfg.setExitStatus {
+							os.Exit(1)
+						}
+					}
+					return nil
+				}
+
+				dir := reviser.NewSourceDir(originProjectName, pathValue, cfg.isRecursive, cfg.excludes).
+					WithWorkerPool(getSharedPool())
+				if cfg.isUseCache && cacheDir != "" {
+					dir = dir.WithCache(cacheDir)
+					if !cfg.useMetadataCache {
+						dir = dir.WithoutMetadataCache()
+					}
+				}
+
+				if err := dir.Fix(options...); err != nil {
+					return fmt.Errorf("Failed to fix directory %s: %w", pathValue, err)
+				}
+				return nil
+			}
+
+			pathToProcess := pathValue
+			if pathValue != reviser.StandardInput {
+				pathToProcess, err = filepath.Abs(pathValue)
+				if err != nil {
+					return fmt.Errorf("Failed to get abs path for %s: %w", pathValue, err)
+				}
+			}
+
+			var (
+				formattedOutput []byte
+				pathHasChange   bool
+			)
+
+			if cfg.isUseCache {
+				skip, checkErr := reviser.ShouldSkip(cacheDir, pathToProcess, cfg.useMetadataCache)
+				if checkErr != nil {
+					return fmt.Errorf("Failed to evaluate cache for %s: %w", pathToProcess, checkErr)
+				}
+				if skip {
+					return nil
+				}
+			}
+
+			formattedOutput, _, pathHasChange, err = reviser.NewSourceFile(originProjectName, pathToProcess).Fix(options...)
+			if err != nil {
+				return fmt.Errorf("Failed to fix file %s: %w", pathToProcess, err)
+			}
+
+			if cfg.isUseCache {
+				hash := reviser.ComputeContentHash(formattedOutput)
+				entry, entryErr := reviser.NewCacheEntry(pathToProcess, hash, cfg.useMetadataCache)
+				if entryErr != nil {
+					return fmt.Errorf("Failed to build cache entry for %s: %w", pathToProcess, entryErr)
+				}
+				if writeErr := reviser.WriteCacheEntry(cacheDir, pathToProcess, entry); writeErr != nil {
+					cacheFile := reviser.CacheFilePath(cacheDir, pathToProcess)
+					return fmt.Errorf("Failed to write cache file %s: %w", cacheFile, writeErr)
+				}
+			}
+
+			if pathHasChange {
+				hasChangeMu.Lock()
+				hasChange = true
+				hasChangeMu.Unlock()
+			}
+
+			return resultPostProcess(pathHasChange, pathToProcess, formattedOutput)
+		})
+	}
+
+	err := g.Wait()
+
+	if sharedPool != nil {
+		sharedPool.StopAndWait()
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	return hasChange, nil
+}
+
+func resultPostProcess(hasChange bool, originFilePath string, formattedOutput []byte) error {
 	switch {
-	case hasChange && *listFileName && output != "write":
+	case hasChange && cfg.listFileName && cfg.output != "write":
 		fmt.Println(originFilePath)
-	case output == "stdout" || originFilePath == reviser.StandardInput:
+
+	case cfg.output == "stdout" || originFilePath == reviser.StandardInput:
 		fmt.Print(string(formattedOutput))
-	case output == "file" || output == "write":
+
+	case cfg.output == "file" || cfg.output == "write":
 		if err := os.WriteFile(originFilePath, formattedOutput, 0o644); err != nil {
-			log.Fatalf("failed to write fixed result to file(%s): %+v\n", originFilePath, err)
+			return fmt.Errorf("failed to write fixed result to file(%s): %w", originFilePath, err)
 		}
-		if *listFileName {
+
+		if cfg.listFileName {
 			fmt.Println(originFilePath)
 		}
+
 	default:
-		log.Fatalf(`invalid output %q specified`, output)
+		return fmt.Errorf("invalid output %q specified", cfg.output)
 	}
+
+	return nil
 }
 
 func validateRequiredParam(filePath string) error {
@@ -492,14 +356,14 @@ func validateRequiredParam(filePath string) error {
 	return nil
 }
 
-func printDeprecations(deprecatedMessagesCh chan string) {
-	var hasDeprecations bool
-	for deprecatedMessage := range deprecatedMessagesCh {
-		hasDeprecations = true
-		log.Printf("%s\n", deprecatedMessage)
+func determineProjectName(projectName, filePath string) (string, error) {
+	if filePath == reviser.StandardInput {
+		var err error
+		filePath, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
 	}
-	if hasDeprecations {
-		log.Printf("All changes to file are applied, but command-line syntax should be fixed\n")
-		os.Exit(1)
-	}
+
+	return module.DetermineProjectName(projectName, filePath)
 }
