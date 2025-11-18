@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"sync"
+	"sync/atomic"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestUsesImport(t *testing.T) {
@@ -155,11 +156,126 @@ func main(){
 
 			fset := token.NewFileSet()
 			f, err := parser.ParseFile(fset, "", []byte(fileData), parser.ParseComments)
-			require.NoError(t, err)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
 			got := UsesImport(f, tt.args.packageImports, tt.args.path)
 
-			assert.Equal(t, tt.want, got)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestUsedImports(t *testing.T) {
+	t.Parallel()
+
+	type args struct {
+		fileData       string
+		packageImports map[string]string
+	}
+
+	tests := []struct {
+		name string
+		args args
+		want map[string]bool
+	}{
+		{
+			name: "reports used and unused imports",
+			args: args{
+				fileData: `package main
+import(
+	"fmt"
+	"github.com/go-pg/pg/v9"
+	"strconv"
+)
+
+func main(){
+	fmt.Println(pg.In([]string{"test"}))
+}
+`,
+				packageImports: map[string]string{
+					"fmt":                    "fmt",
+					"strconv":                "strconv",
+					"github.com/go-pg/pg/v9": "pg",
+				},
+			},
+			want: map[string]bool{
+				"fmt":                    true,
+				"github.com/go-pg/pg/v9": true,
+				"strconv":                false,
+			},
+		},
+		{
+			name: "respects explicit alias",
+			args: args{
+				fileData: `package main
+import(
+	pg2 "github.com/go-pg/pg/v9"
+)
+
+func main(){
+	_ = pg2.In([]string{"test"})
+}
+`,
+				packageImports: map[string]string{
+					"github.com/go-pg/pg/v9": "pg",
+				},
+			},
+			want: map[string]bool{
+				"github.com/go-pg/pg/v9": true,
+			},
+		},
+		{
+			name: "marks blank and dot imports as used",
+			args: args{
+				fileData: `package main
+import(
+	_ "github.com/go-pg/pg/v9"
+	. "fmt"
+)
+
+func main(){
+	Println("ok")
+}
+`,
+				packageImports: map[string]string{
+					"fmt":                    "fmt",
+					"github.com/go-pg/pg/v9": "pg",
+				},
+			},
+			want: map[string]bool{
+				"github.com/go-pg/pg/v9": true,
+				"fmt":                    true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, "", []byte(tt.args.fileData), parser.ParseComments)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := UsedImports(f, tt.args.packageImports)
+			for path, wantUsed := range tt.want {
+				gotUsed, ok := got[path]
+				if wantUsed {
+					if !ok || !gotUsed {
+						t.Errorf("expected %s to be marked used, got %v", path, gotUsed)
+					}
+					continue
+				}
+				if ok && gotUsed {
+					t.Errorf("expected %s to be unused", path)
+				}
+			}
 		})
 	}
 }
@@ -214,16 +330,97 @@ func TestLoadPackageDeps(t *testing.T) {
 				nil,
 				parser.ParseComments,
 			)
-			require.NoError(t, err)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
 			got, err := LoadPackageDependencies(tt.args.dir, ParseBuildTag(f))
 			if tt.wantErr {
-				assert.Error(t, err)
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
 				return
 			}
 
-			assert.NoError(t, err)
-			assert.EqualValues(t, tt.want, got)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if diff := cmp.Diff(tt.want, map[string]string(got)); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
 		})
+	}
+}
+
+func TestLoadPackageDependenciesSingleflight(t *testing.T) {
+	t.Parallel()
+
+	ClearPackageDepsCache()
+
+	originalLoader := loadPackageDependenciesFunc
+	defer func() { loadPackageDependenciesFunc = originalLoader }()
+
+	var callCount int32
+	ready := make(chan struct{})
+	proceed := make(chan struct{})
+
+	loadPackageDependenciesFunc = func(dir, buildTag string) (PackageImports, error) {
+		if atomic.AddInt32(&callCount, 1) == 1 {
+			close(ready)
+		}
+		<-proceed
+		return PackageImports{"example.com/pkg": "pkg"}, nil
+	}
+
+	const goroutineCount = 8
+	var wg sync.WaitGroup
+	errCh := make(chan error, goroutineCount)
+
+	for i := 0; i < goroutineCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			imports, err := LoadPackageDependencies("/tmp/test", "")
+			if err != nil {
+				errCh <- fmt.Errorf("LoadPackageDependencies failed: %w", err)
+				return
+			}
+			if imports["example.com/pkg"] != "pkg" {
+				errCh <- fmt.Errorf("unexpected imports map: %v", imports)
+				return
+			}
+			errCh <- nil
+		}()
+	}
+
+	<-ready
+	close(proceed)
+	wg.Wait()
+
+	for i := 0; i < goroutineCount; i++ {
+		if err := <-errCh; err != nil {
+			t.Fatalf("goroutine returned error: %v", err)
+		}
+	}
+
+	if got := atomic.LoadInt32(&callCount); got != 1 {
+		t.Fatalf("expected single loader invocation, got %d", got)
+	}
+
+	// Ensure cached result is reused without invoking loader again.
+	loadPackageDependenciesFunc = func(dir, buildTag string) (PackageImports, error) {
+		atomic.AddInt32(&callCount, 1)
+		return nil, fmt.Errorf("unexpected loader invocation")
+	}
+
+	imports, err := LoadPackageDependencies("/tmp/test", "")
+	if err != nil {
+		t.Fatalf("unexpected error retrieving from cache: %v", err)
+	}
+	if imports["example.com/pkg"] != "pkg" {
+		t.Fatalf("cached result mismatch: %v", imports)
+	}
+	if got := atomic.LoadInt32(&callCount); got != 1 {
+		t.Fatalf("cache miss incremented loader count: %d", got)
 	}
 }
