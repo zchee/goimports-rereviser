@@ -25,7 +25,15 @@ const (
 	defaultParallelThreshold = 8
 )
 
-var currentPaths = []string{".", "." + string(filepath.Separator)}
+var (
+	currentPaths = []string{".", "." + string(filepath.Separator)}
+	// ignoredByGoToolNames mirrors the directories the go tool skips when
+	// evaluating package patterns (see `go help packages`).
+	ignoredByGoToolNames = map[string]struct{}{
+		"testdata": {},
+		"vendor":   {},
+	}
+)
 
 var ErrPathIsNotDir = errors.New("path is not a directory")
 
@@ -149,7 +157,6 @@ func (d *SourceDir) Fix(options ...SourceFileOption) error {
 		&processingErr,
 		options...,
 	))
-
 	if err != nil {
 		collectErr = fmt.Errorf("failed to walk dir: %w", err)
 	}
@@ -199,7 +206,6 @@ func (d *SourceDir) Find(options ...SourceFileOption) (*UnformattedCollection, e
 		&processingErr,
 		options...,
 	))
-
 	if err != nil {
 		collectErr = fmt.Errorf("failed to walk dir: %w", err)
 	}
@@ -380,6 +386,11 @@ func (d *SourceDir) isExcluded(path string) bool {
 	} else {
 		absPath = filepath.Join(d.dir, path)
 	}
+
+	if isGoToolIgnored(absPath) {
+		return true
+	}
+
 	for _, pattern := range d.excludePatterns {
 		matched, err := filepath.Match(pattern, absPath)
 		if err == nil && matched {
@@ -387,6 +398,26 @@ func (d *SourceDir) isExcluded(path string) bool {
 		}
 	}
 	return false
+}
+
+// isGoToolIgnored implements the go command's implicit exclusion rules:
+// directories named vendor or testdata and any path component beginning with
+// '.' or '_' are skipped when expanding patterns such as ./... .
+func isGoToolIgnored(path string) bool {
+	base := filepath.Base(path)
+	if base == "" || base == "." || base == string(filepath.Separator) {
+		return false
+	}
+
+	switch base[0] {
+	case '.':
+		return true
+	case '_':
+		return true
+	}
+
+	_, ok := ignoredByGoToolNames[base]
+	return ok
 }
 
 type UnformattedCollection struct {
