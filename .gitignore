@@ -63,3 +63,6 @@ coverage.out
 
 # testdata
 reviser/testdata
+
+# binary
+/goimports-rereviser
