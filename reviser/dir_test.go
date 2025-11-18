@@ -152,6 +152,26 @@ func TestSourceDir_IsExcluded(t *testing.T) {
 		want bool
 	}{
 		{
+			name: "default-vendor-dir",
+			args: args{project: "project", path: "project", excludes: "", testPath: filepath.Join("vendor")},
+			want: true,
+		},
+		{
+			name: "default-testdata-dir",
+			args: args{project: "project", path: "project", excludes: "", testPath: filepath.Join("nested", "testdata")},
+			want: true,
+		},
+		{
+			name: "default-dot-file",
+			args: args{project: "project", path: "project", excludes: "", testPath: ".hidden.go"},
+			want: true,
+		},
+		{
+			name: "default-underscore-dir",
+			args: args{project: "project", path: "project", excludes: "", testPath: filepath.Join("_tmp")},
+			want: true,
+		},
+		{
 			name: "normal",
 			args: args{project: "project", path: "project", excludes: "test.go", testPath: "test.go"},
 			want: true,
@@ -180,6 +200,11 @@ func TestSourceDir_IsExcluded(t *testing.T) {
 			name: "multi-excludes",
 			args: args{project: "project", path: "project", excludes: "t*.go,abc.go", testPath: "abc.go"},
 			want: true,
+		},
+		{
+			name: "vendor-go-file-not-excluded",
+			args: args{project: "project", path: "project", excludes: "", testPath: "vendor.go"},
+			want: false,
 		},
 	}
 
