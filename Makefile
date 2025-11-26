@@ -4,7 +4,7 @@ go-generate:
 
 .PHONY: go-test
 go-test:
-	@go test -race -v -cover ./...
+	@go test -v -race -count=1 -shuffle=on -run=. ./...
 
 # Create dist only locally
 .PHONY: release-check
