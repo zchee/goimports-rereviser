@@ -13,7 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/zchee/goimports-rereviser/v4/pkg/astutil"
@@ -258,16 +258,16 @@ func (f *SourceFile) groupImports(
 		generalImports = append(generalImports, imprt)
 	}
 
-	sort.Strings(stdImports)
-	sort.Strings(generalImports)
-	sort.Strings(projectLocalPkgs)
-	sort.Strings(projectImports)
-	sort.Strings(blankedImports)
-	sort.Strings(dottedImports)
-	sort.Strings(namedStdImports)
-	sort.Strings(namedGeneralImports)
-	sort.Strings(namedProjectLocalPkgs)
-	sort.Strings(namedProjectImports)
+	slices.Sort(stdImports)
+	slices.Sort(generalImports)
+	slices.Sort(projectLocalPkgs)
+	slices.Sort(projectImports)
+	slices.Sort(blankedImports)
+	slices.Sort(dottedImports)
+	slices.Sort(namedStdImports)
+	slices.Sort(namedGeneralImports)
+	slices.Sort(namedProjectLocalPkgs)
+	slices.Sort(namedProjectImports)
 
 	result := &groupsImports{
 		common: &common{
@@ -338,11 +338,11 @@ func (f *SourceFile) fixImports(
 			},
 		)
 
-		imports := f.importsOrders.sortImportsByOrder(groups)
+		imports := addSideEffectSeparators(f.importsOrders.sortImportsByOrder(groups))
 		dd.Specs = rebuildImports(dd.Tok, commentsMetadata, imports)
 	}
 
-	clearImportDocs(file, importsPositions)
+	clearImportDocs(file, importsPositions, commentsMetadata)
 	removeEmptyImportNode(file)
 }
 
@@ -441,6 +441,12 @@ func rebuildImports(tok token.Token, commentsMetadata map[string]*commentsMetada
 			specs = append(specs, spec)
 		}
 		for _, imprt := range group {
+			if imprt == "" {
+				specs = append(specs, &ast.ImportSpec{Path: &ast.BasicLit{Value: "", Kind: tok}})
+
+				continue
+			}
+
 			spec := &ast.ImportSpec{
 				Path: &ast.BasicLit{Value: importWithComment(imprt, commentsMetadata), Kind: tok},
 			}
@@ -451,16 +457,60 @@ func rebuildImports(tok token.Token, commentsMetadata map[string]*commentsMetada
 	return specs
 }
 
-func clearImportDocs(f *ast.File, importsPositions []*importPosition) {
+func addSideEffectSeparators(importGroups [][]string) [][]string {
+	result := make([][]string, len(importGroups))
+
+	for idx, group := range importGroups {
+		if len(group) == 0 {
+			result[idx] = group
+
+			continue
+		}
+
+		var nonBlanked, blanked []string
+		for _, imprt := range group {
+			if strings.HasPrefix(imprt, "_") {
+				blanked = append(blanked, imprt)
+				continue
+			}
+
+			nonBlanked = append(nonBlanked, imprt)
+		}
+
+		if len(blanked) == 0 || len(nonBlanked) == 0 {
+			result[idx] = group
+
+			continue
+		}
+
+		newGroup := make([]string, 0, len(group)+1)
+		newGroup = append(newGroup, nonBlanked...)
+		newGroup = append(newGroup, "")
+		newGroup = append(newGroup, blanked...)
+
+		result[idx] = newGroup
+	}
+
+	return result
+}
+
+func clearImportDocs(f *ast.File, importsPositions []*importPosition, _ map[string]*commentsMetadata) {
 	importsComments := make([]*ast.CommentGroup, 0, len(f.Comments))
 
 	for _, comment := range f.Comments {
+		var shouldSkip bool
 		for _, importPosition := range importsPositions {
 			if importPosition.IsInRange(comment) {
-				continue
+				shouldSkip = true
+				break
 			}
-			importsComments = append(importsComments, comment)
 		}
+
+		if shouldSkip {
+			continue
+		}
+
+		importsComments = append(importsComments, comment)
 	}
 
 	if len(f.Imports) > 0 {
@@ -469,19 +519,37 @@ func clearImportDocs(f *ast.File, importsPositions []*importPosition) {
 }
 
 func importWithComment(imprt string, commentsMetadata map[string]*commentsMetadata) string {
-	var comment string
 	commentGroup, ok := commentsMetadata[imprt]
-	if ok && commentGroup != nil && commentGroup.Comment != nil {
-		for _, c := range commentGroup.Comment.List {
-			comment += c.Text
-		}
-	}
-
-	if comment == "" {
+	if !ok || commentGroup == nil {
 		return imprt
 	}
 
-	return fmt.Sprintf("%s %s", imprt, comment)
+	var doc strings.Builder
+	if commentGroup.Doc != nil {
+		for idx, c := range commentGroup.Doc.List {
+			if idx > 0 {
+				doc.WriteString("\n\t")
+			}
+			doc.WriteString(c.Text)
+		}
+		if doc.Len() > 0 {
+			doc.WriteString("\n\t")
+		}
+	}
+
+	var inline strings.Builder
+	if commentGroup.Comment != nil {
+		for _, c := range commentGroup.Comment.List {
+			inline.WriteByte(' ')
+			inline.WriteString(c.Text)
+		}
+	}
+
+	if doc.Len() == 0 && inline.Len() == 0 {
+		return imprt
+	}
+
+	return fmt.Sprintf("%s%s%s", doc.String(), imprt, inline.String())
 }
 
 func (f *SourceFile) parseImports(file *ast.File) (map[string]*commentsMetadata, error) {

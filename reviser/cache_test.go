@@ -102,11 +102,11 @@ func TestShouldSkipByMetadata(t *testing.T) {
 func TestComputeContentHash_CollisionCheck(t *testing.T) {
 	samples := make([][]byte, 0, 256)
 
-	for i := 0; i < 64; i++ {
-		samples = append(samples, []byte(fmt.Sprintf("sample-%02d", i)))
+	for i := range 64 {
+		samples = append(samples, fmt.Appendf(nil, "sample-%02d", i))
 	}
-	for i := 0; i < 16; i++ {
-		samples = append(samples, []byte(fmt.Sprintf("package p%02d\n\nfunc f() {\n\tprintln(%d)\n}\n", i, i)))
+	for i := range 16 {
+		samples = append(samples, fmt.Appendf(nil, "package p%02d\n\nfunc f() {\n\tprintln(%d)\n}\n", i, i))
 	}
 
 	md5Seen := make(map[string]int, len(samples))
