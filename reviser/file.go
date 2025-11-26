@@ -342,7 +342,7 @@ func (f *SourceFile) fixImports(
 		dd.Specs = rebuildImports(dd.Tok, commentsMetadata, imports)
 	}
 
-	clearImportDocs(file, importsPositions)
+	clearImportDocs(file, importsPositions, commentsMetadata)
 	removeEmptyImportNode(file)
 }
 
@@ -451,16 +451,23 @@ func rebuildImports(tok token.Token, commentsMetadata map[string]*commentsMetada
 	return specs
 }
 
-func clearImportDocs(f *ast.File, importsPositions []*importPosition) {
+func clearImportDocs(f *ast.File, importsPositions []*importPosition, _ map[string]*commentsMetadata) {
 	importsComments := make([]*ast.CommentGroup, 0, len(f.Comments))
 
 	for _, comment := range f.Comments {
+		var shouldSkip bool
 		for _, importPosition := range importsPositions {
 			if importPosition.IsInRange(comment) {
-				continue
+				shouldSkip = true
+				break
 			}
-			importsComments = append(importsComments, comment)
 		}
+
+		if shouldSkip {
+			continue
+		}
+
+		importsComments = append(importsComments, comment)
 	}
 
 	if len(f.Imports) > 0 {
@@ -469,19 +476,37 @@ func clearImportDocs(f *ast.File, importsPositions []*importPosition) {
 }
 
 func importWithComment(imprt string, commentsMetadata map[string]*commentsMetadata) string {
-	var comment string
 	commentGroup, ok := commentsMetadata[imprt]
-	if ok && commentGroup != nil && commentGroup.Comment != nil {
-		for _, c := range commentGroup.Comment.List {
-			comment += c.Text
-		}
-	}
-
-	if comment == "" {
+	if !ok || commentGroup == nil {
 		return imprt
 	}
 
-	return fmt.Sprintf("%s %s", imprt, comment)
+	var doc strings.Builder
+	if commentGroup.Doc != nil {
+		for idx, c := range commentGroup.Doc.List {
+			if idx > 0 {
+				doc.WriteString("\n\t")
+			}
+			doc.WriteString(c.Text)
+		}
+		if doc.Len() > 0 {
+			doc.WriteString("\n\t")
+		}
+	}
+
+	var inline strings.Builder
+	if commentGroup.Comment != nil {
+		for _, c := range commentGroup.Comment.List {
+			inline.WriteByte(' ')
+			inline.WriteString(c.Text)
+		}
+	}
+
+	if doc.Len() == 0 && inline.Len() == 0 {
+		return imprt
+	}
+
+	return fmt.Sprintf("%s%s%s", doc.String(), imprt, inline.String())
 }
 
 func (f *SourceFile) parseImports(file *ast.File) (map[string]*commentsMetadata, error) {

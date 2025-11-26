@@ -384,7 +384,7 @@ import (
 		},
 
 		{
-			name:        "success with clear doc for import",
+			name:        "success with preserved doc comment for import",
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -406,6 +406,7 @@ package testdata
 import (
 	"fmt"
 
+	// test
 	"github.com/zchee/goimports-rereviser/testdata/innderpkg"
 )
 
