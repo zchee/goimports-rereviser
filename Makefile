@@ -53,4 +53,4 @@ build-macos-amd64:
 
 .PHONY: update-std-package-list
 update-std-package-list:
-	@go run -tags gen github.com/zchee/goimports-rereviser/v3/pkg/std/gen
+	@go run -tags gen github.com/zchee/goimports-rereviser/v4/pkg/std/gen
