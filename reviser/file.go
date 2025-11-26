@@ -338,7 +338,7 @@ func (f *SourceFile) fixImports(
 			},
 		)
 
-		imports := f.importsOrders.sortImportsByOrder(groups)
+		imports := addSideEffectSeparators(f.importsOrders.sortImportsByOrder(groups))
 		dd.Specs = rebuildImports(dd.Tok, commentsMetadata, imports)
 	}
 
@@ -441,6 +441,12 @@ func rebuildImports(tok token.Token, commentsMetadata map[string]*commentsMetada
 			specs = append(specs, spec)
 		}
 		for _, imprt := range group {
+			if imprt == "" {
+				specs = append(specs, &ast.ImportSpec{Path: &ast.BasicLit{Value: "", Kind: tok}})
+
+				continue
+			}
+
 			spec := &ast.ImportSpec{
 				Path: &ast.BasicLit{Value: importWithComment(imprt, commentsMetadata), Kind: tok},
 			}
@@ -449,6 +455,43 @@ func rebuildImports(tok token.Token, commentsMetadata map[string]*commentsMetada
 	}
 
 	return specs
+}
+
+func addSideEffectSeparators(importGroups [][]string) [][]string {
+	result := make([][]string, len(importGroups))
+
+	for idx, group := range importGroups {
+		if len(group) == 0 {
+			result[idx] = group
+
+			continue
+		}
+
+		var nonBlanked, blanked []string
+		for _, imprt := range group {
+			if strings.HasPrefix(imprt, "_") {
+				blanked = append(blanked, imprt)
+				continue
+			}
+
+			nonBlanked = append(nonBlanked, imprt)
+		}
+
+		if len(blanked) == 0 || len(nonBlanked) == 0 {
+			result[idx] = group
+
+			continue
+		}
+
+		newGroup := make([]string, 0, len(group)+1)
+		newGroup = append(newGroup, nonBlanked...)
+		newGroup = append(newGroup, "")
+		newGroup = append(newGroup, blanked...)
+
+		result[idx] = newGroup
+	}
+
+	return result
 }
 
 func clearImportDocs(f *ast.File, importsPositions []*importPosition, _ map[string]*commentsMetadata) {

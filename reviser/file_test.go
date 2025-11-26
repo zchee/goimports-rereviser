@@ -417,6 +417,43 @@ import (
 		},
 
 		{
+			name:        "keep comment before side-effect import",
+			projectName: "github.com/zchee/goimports-rereviser",
+			filePath:    "./testdata/example.go",
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	"unsafe"
+
+	"google.golang.org/grpc/encoding"
+	"google.golang.org/grpc/mem"
+
+	// Guarantee that the built-in proto is called registered before this one
+	// so that it can be replaced.
+	_ "google.golang.org/grpc/encoding/proto"
+)
+
+-- want.go --
+package testdata
+
+import (
+	"unsafe"
+
+	"google.golang.org/grpc/encoding"
+	"google.golang.org/grpc/mem"
+
+	// Guarantee that the built-in proto is called registered before this one
+	// so that it can be replaced.
+	_ "google.golang.org/grpc/encoding/proto"
+)
+`,
+			wantChange: true,
+			wantErr:    false,
+		},
+
+		{
 			name:        "success with comment for import",
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
@@ -484,11 +521,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-
 	_ "github.com/lib/pq" // configure database/sql with postgres driver
 	"go.uber.org/fx"
 	"golang.org/x/tools/go/packages"
-
 	"github.com/zchee/goimports-rereviser/pkg/somepkg"
 )
 -- want.go --
@@ -499,14 +534,15 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "github.com/lib/pq" // configure database/sql with postgres driver
 	"go.uber.org/fx"
 	"golang.org/x/tools/go/packages"
+
+	_ "github.com/lib/pq" // configure database/sql with postgres driver
 
 	"github.com/zchee/goimports-rereviser/pkg/somepkg"
 )
 `,
-			wantChange: false,
+			wantChange: true,
 			wantErr:    false,
 		},
 		{
@@ -1162,15 +1198,16 @@ func main() {
 package testdata
 
 import (
-	_ "fmt"
 	. "io"
+
+	_ "fmt"
 )
 
 // nolint:gomnd
 func main() {
 }
 `,
-			wantChange: false,
+			wantChange: true,
 			wantErr:    false,
 		},
 		{
