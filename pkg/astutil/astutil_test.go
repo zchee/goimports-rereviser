@@ -281,8 +281,6 @@ func main(){
 }
 
 func TestLoadPackageDeps(t *testing.T) {
-	t.Parallel()
-
 	type args struct {
 		dir      string
 		filename string
@@ -322,8 +320,6 @@ func TestLoadPackageDeps(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			f, err := parser.ParseFile(
 				token.NewFileSet(),
 				fmt.Sprintf("%s/%s", tt.args.dir, tt.args.filename),
@@ -373,13 +369,11 @@ func TestLoadPackageDependenciesSingleflight(t *testing.T) {
 	}
 
 	const goroutineCount = 8
-	var wg sync.WaitGroup
+	wg := new(sync.WaitGroup)
 	errCh := make(chan error, goroutineCount)
 
-	for i := 0; i < goroutineCount; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range goroutineCount {
+		wg.Go(func() {
 			imports, err := LoadPackageDependencies("/tmp/test", "")
 			if err != nil {
 				errCh <- fmt.Errorf("LoadPackageDependencies failed: %w", err)
@@ -390,14 +384,14 @@ func TestLoadPackageDependenciesSingleflight(t *testing.T) {
 				return
 			}
 			errCh <- nil
-		}()
+		})
 	}
 
 	<-ready
 	close(proceed)
 	wg.Wait()
 
-	for i := 0; i < goroutineCount; i++ {
+	for range goroutineCount {
 		if err := <-errCh; err != nil {
 			t.Fatalf("goroutine returned error: %v", err)
 		}
