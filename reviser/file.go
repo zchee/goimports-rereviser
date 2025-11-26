@@ -13,7 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/zchee/goimports-rereviser/v4/pkg/astutil"
@@ -258,16 +258,16 @@ func (f *SourceFile) groupImports(
 		generalImports = append(generalImports, imprt)
 	}
 
-	sort.Strings(stdImports)
-	sort.Strings(generalImports)
-	sort.Strings(projectLocalPkgs)
-	sort.Strings(projectImports)
-	sort.Strings(blankedImports)
-	sort.Strings(dottedImports)
-	sort.Strings(namedStdImports)
-	sort.Strings(namedGeneralImports)
-	sort.Strings(namedProjectLocalPkgs)
-	sort.Strings(namedProjectImports)
+	slices.Sort(stdImports)
+	slices.Sort(generalImports)
+	slices.Sort(projectLocalPkgs)
+	slices.Sort(projectImports)
+	slices.Sort(blankedImports)
+	slices.Sort(dottedImports)
+	slices.Sort(namedStdImports)
+	slices.Sort(namedGeneralImports)
+	slices.Sort(namedProjectLocalPkgs)
+	slices.Sort(namedProjectImports)
 
 	result := &groupsImports{
 		common: &common{
