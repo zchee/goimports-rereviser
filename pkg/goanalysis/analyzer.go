@@ -16,7 +16,7 @@ const errMessage = "imports must be formatted"
 
 func NewAnalyzer(flagSet *flag.FlagSet, localPkgPrefixes string, options ...reviser.SourceFileOption) *analysis.Analyzer {
 	return &analysis.Analyzer{
-		Name:  "goimportsreviser",
+		Name:  "goimportsrereviser",
 		Doc:   "goimports-rereviser linter",
 		Run:   run(localPkgPrefixes, options...),
 		Flags: *flagSet,
