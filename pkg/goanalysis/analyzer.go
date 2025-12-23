@@ -24,6 +24,10 @@ func NewAnalyzer(flagSet *flag.FlagSet, localPkgPrefixes string, options ...revi
 }
 
 func run(localPkgPrefixes string, options ...reviser.SourceFileOption) func(pass *analysis.Pass) (any, error) {
+	if localPkgPrefixes != "" {
+		options = append(options, reviser.WithCompanyPackagePrefixes(localPkgPrefixes))
+	}
+
 	return func(pass *analysis.Pass) (any, error) {
 		inspect := func(formattedFile *ast.File, hasChanged bool) func(node ast.Node) bool {
 			return func(node ast.Node) bool {
