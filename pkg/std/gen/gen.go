@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -64,12 +65,13 @@ func main() {
 		log.Fatalf("Failed to format source: %+v\n", err)
 	}
 
-	currentDir, err := os.Getwd()
-	if err != nil {
-		log.Fatalf("Failed to get current directory: %+v\n", err)
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		log.Fatal("get current filename")
 	}
+	baseDir := filepath.Dir(filename)
 
-	filePath := filepath.Join(currentDir, "..", fileName)
+	filePath := filepath.Join(baseDir, "..", fileName)
 	log.Printf("file path to be updated: %s", filePath)
 	if err := os.WriteFile(filePath, data, 0o644); err != nil {
 		log.Fatalf("Failed to write file: %+v\n", err)
