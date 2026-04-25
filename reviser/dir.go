@@ -319,7 +319,7 @@ func (d *SourceDir) makeSubmitter() (func(func()), func()) {
 		poolMu       sync.Mutex
 		poolCreated  bool
 		pending      sync.WaitGroup
-		fileCount    int32
+		fileCount    atomic.Int32
 	)
 
 	threshold := d.sequentialThreshold
@@ -343,7 +343,7 @@ func (d *SourceDir) makeSubmitter() (func(func()), func()) {
 			return
 		}
 
-		count := atomic.AddInt32(&fileCount, 1)
+		count := fileCount.Add(1)
 		if !canCreatePool || int(count) <= threshold {
 			task()
 			return

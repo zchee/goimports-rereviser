@@ -356,12 +356,12 @@ func TestLoadPackageDependenciesSingleflight(t *testing.T) {
 	originalLoader := loadPackageDependenciesFunc
 	defer func() { loadPackageDependenciesFunc = originalLoader }()
 
-	var callCount int32
+	var callCount atomic.Int32
 	ready := make(chan struct{})
 	proceed := make(chan struct{})
 
 	loadPackageDependenciesFunc = func(dir, buildTag string) (PackageImports, error) {
-		if atomic.AddInt32(&callCount, 1) == 1 {
+		if callCount.Add(1) == 1 {
 			close(ready)
 		}
 		<-proceed
@@ -397,13 +397,13 @@ func TestLoadPackageDependenciesSingleflight(t *testing.T) {
 		}
 	}
 
-	if got := atomic.LoadInt32(&callCount); got != 1 {
+	if got := callCount.Load(); got != 1 {
 		t.Fatalf("expected single loader invocation, got %d", got)
 	}
 
 	// Ensure cached result is reused without invoking loader again.
 	loadPackageDependenciesFunc = func(dir, buildTag string) (PackageImports, error) {
-		atomic.AddInt32(&callCount, 1)
+		callCount.Add(1)
 		return nil, fmt.Errorf("unexpected loader invocation")
 	}
 
@@ -414,7 +414,7 @@ func TestLoadPackageDependenciesSingleflight(t *testing.T) {
 	if imports["example.com/pkg"] != "pkg" {
 		t.Fatalf("cached result mismatch: %v", imports)
 	}
-	if got := atomic.LoadInt32(&callCount); got != 1 {
+	if got := callCount.Load(); got != 1 {
 		t.Fatalf("cache miss incremented loader count: %d", got)
 	}
 }
