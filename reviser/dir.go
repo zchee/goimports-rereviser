@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,6 +17,13 @@ import (
 )
 
 type walkCallbackFunc = func(hasChanged bool, path string, content []byte) error
+
+type cachePolicy int
+
+const (
+	cacheDisabled cachePolicy = iota
+	cacheReadWrite
+)
 
 const (
 	goExtension              = ".go"
@@ -48,6 +54,8 @@ type SourceDir struct {
 	cacheDir            string
 	cacheEnabled        bool
 	useMetadataCache    bool
+	cacheFingerprint    string
+	writeFile           func(name string, data []byte, perm fs.FileMode) error
 }
 
 func NewSourceDir(projectName, path string, isRecursive bool, excludes string) *SourceDir {
@@ -85,6 +93,7 @@ func NewSourceDir(projectName, path string, isRecursive bool, excludes string) *
 		excludePatterns:     patterns,
 		sequentialThreshold: defaultParallelThreshold,
 		useMetadataCache:    true,
+		writeFile:           os.WriteFile,
 	}
 }
 
@@ -105,9 +114,13 @@ func (d *SourceDir) WithCache(cacheDir string) *SourceDir {
 	return d
 }
 
-// WithMetadataCache enables metadata-based cache skipping. The fast path relies
-// on file size and modification time to decide whether a file can be skipped,
-// falling back to hash verification when metadata is absent.
+// WithCacheFingerprint scopes cache hits to the formatter configuration that
+// produced them. Empty fingerprints preserve legacy cache behavior.
+func (d *SourceDir) WithCacheFingerprint(fingerprint string) *SourceDir {
+	d.cacheFingerprint = fingerprint
+	return d
+}
+
 func (d *SourceDir) WithMetadataCache() *SourceDir {
 	d.useMetadataCache = true
 	return d
@@ -134,7 +147,6 @@ func (d *SourceDir) Fix(options ...SourceFileOption) error {
 	}
 
 	submit, wait := d.makeSubmitter()
-	defer wait()
 
 	// Collect files and submit to worker pool
 	var collectErr error
@@ -147,16 +159,17 @@ func (d *SourceDir) Fix(options ...SourceFileOption) error {
 			if !hasChanged {
 				return nil
 			}
-			if err := os.WriteFile(path, content, 0o644); err != nil {
-				log.Fatalf("failed to write fixed result to file(%s): %+v\n", path, err)
-				return err
+			if err := d.writeFile(path, content, 0o644); err != nil {
+				return fmt.Errorf("failed to write fixed result to file(%s): %w", path, err)
 			}
 			return nil
 		},
 		&errMu,
 		&processingErr,
+		cacheReadWrite,
 		options...,
 	))
+	wait()
 	if err != nil {
 		collectErr = fmt.Errorf("failed to walk dir: %w", err)
 	}
@@ -185,7 +198,6 @@ func (d *SourceDir) Find(options ...SourceFileOption) (*UnformattedCollection, e
 	}
 
 	submit, wait := d.makeSubmitter()
-	defer wait()
 
 	var collectErr error
 	var processingErr error
@@ -204,8 +216,10 @@ func (d *SourceDir) Find(options ...SourceFileOption) (*UnformattedCollection, e
 		},
 		&errMu,
 		&processingErr,
+		cacheDisabled,
 		options...,
 	))
+	wait()
 	if err != nil {
 		collectErr = fmt.Errorf("failed to walk dir: %w", err)
 	}
@@ -226,7 +240,7 @@ func (d *SourceDir) Find(options ...SourceFileOption) (*UnformattedCollection, e
 }
 
 // walk submits file processing to worker pool for concurrent execution.
-func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *sync.Mutex, processingErr *error, options ...SourceFileOption) fs.WalkDirFunc {
+func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *sync.Mutex, processingErr *error, cacheMode cachePolicy, options ...SourceFileOption) fs.WalkDirFunc {
 	return func(path string, dirEntry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -249,8 +263,8 @@ func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *
 					absPath = filepath.Join(d.dir, filePath)
 				}
 
-				if d.cacheEnabled {
-					skip, cacheErr := ShouldSkip(d.cacheDir, absPath, d.useMetadataCache)
+				if d.cacheEnabled && cacheMode == cacheReadWrite {
+					skip, cacheErr := ShouldSkipWithFingerprint(d.cacheDir, absPath, d.useMetadataCache, d.cacheFingerprint)
 					if cacheErr != nil {
 						errMu.Lock()
 						if *processingErr == nil {
@@ -280,15 +294,16 @@ func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *
 						*processingErr = err
 					}
 					errMu.Unlock()
+					return
 				}
 
-				if d.cacheEnabled {
+				if d.cacheEnabled && cacheMode == cacheReadWrite {
 					hash := ComputeContentHash(content)
 					if hash == "" {
 						return
 					}
 
-					entry, metaErr := NewCacheEntry(absPath, hash, d.useMetadataCache)
+					entry, metaErr := NewCacheEntryWithFingerprint(absPath, hash, d.useMetadataCache, d.cacheFingerprint)
 					if metaErr != nil {
 						errMu.Lock()
 						if *processingErr == nil {
@@ -487,7 +502,7 @@ func (d *SourceDir) shouldSkipByCache(path string) (bool, error) {
 		absPath = filepath.Join(d.dir, path)
 	}
 
-	return ShouldSkip(d.cacheDir, absPath, d.useMetadataCache)
+	return ShouldSkipWithFingerprint(d.cacheDir, absPath, d.useMetadataCache, d.cacheFingerprint)
 }
 
 func (d *SourceDir) writeCache(path string, entry CacheEntry) error {

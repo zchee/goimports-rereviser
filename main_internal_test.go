@@ -130,7 +130,22 @@ func main() {
 		t.Fatalf("cache modtime mismatch: got %d want %d", got, want)
 	}
 
-	time.Sleep(5 * time.Millisecond)
+	stableModTime := time.Unix(1_700_000_000, 123_000_000).UTC()
+	if err := os.Chtimes(filePath, stableModTime, stableModTime); err != nil {
+		t.Fatalf("failed to set stable fixture mtime: %v", err)
+	}
+	stableStat, err := os.Stat(filePath)
+	if err != nil {
+		t.Fatalf("failed to stat stable fixture mtime: %v", err)
+	}
+	stableModTime = stableStat.ModTime().UTC()
+	stableEntry, err := reviser.NewCacheEntry(filePath, reviser.ComputeContentHash(formatted), cfg.useMetadataCache)
+	if err != nil {
+		t.Fatalf("failed to rebuild cache entry after setting stable mtime: %v", err)
+	}
+	if err := reviser.WriteCacheEntry(cacheDir, filePath, stableEntry); err != nil {
+		t.Fatalf("failed to write stable cache entry: %v", err)
+	}
 
 	hasChange, err = processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, nil)
 	if err != nil {
@@ -144,7 +159,7 @@ func main() {
 	if err != nil {
 		t.Fatalf("failed to stat file after second run: %v", err)
 	}
-	if got, want := statAfterSecondRun.ModTime().UTC().UnixNano(), statAfterFirstRun.ModTime().UTC().UnixNano(); got != want {
+	if got, want := statAfterSecondRun.ModTime().UTC().UnixNano(), stableModTime.UnixNano(); got != want {
 		t.Fatalf("expected second run not to rewrite file: got mtime %d want %d", got, want)
 	}
 	if got, want := statAfterSecondRun.Size(), statAfterFirstRun.Size(); got != want {
@@ -213,6 +228,186 @@ func main() {
 	}
 	if entry != nil {
 		t.Fatalf("expected non-mutating stdout mode not to persist cache state, got %+v", *entry)
+	}
+}
+
+func TestProcessPaths_ListDiffReportsOptionMismatchDespiteExistingCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "separate_named.go")
+
+	input := []byte(`package main
+
+import (
+	"github.com/google/uuid"
+	errors "github.com/pkg/errors"
+)
+
+func main() {
+	_, _ = uuid.New(), errors.New("cached list")
+}
+`)
+	if err := os.WriteFile(filePath, input, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	origCfg := cfg
+	defer func() { cfg = origCfg }()
+
+	cfg = Config{
+		projectName:      "example.com/test",
+		output:           "file",
+		isUseCache:       true,
+		useMetadataCache: true,
+	}
+
+	hasChange, err := processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, nil)
+	if err != nil {
+		t.Fatalf("mutating processPaths returned error: %v", err)
+	}
+	if hasChange {
+		t.Fatalf("expected default mutating run to leave already-default-formatted file unchanged")
+	}
+	entry, err := reviser.ReadCacheEntry(cacheDir, filePath)
+	if err != nil {
+		t.Fatalf("failed to read cache entry after mutating run: %v", err)
+	}
+	if entry == nil {
+		t.Fatalf("expected mutating run to persist a cache entry")
+	}
+
+	cfg.listFileName = true
+	cfg.shouldSeparateNamedImports = true
+	stdout := captureStdout(t, func() {
+		hasChange, err = processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, reviser.SourceFileOptions{reviser.WithSeparatedNamedImports})
+		if err != nil {
+			t.Fatalf("list-diff processPaths returned error: %v", err)
+		}
+	})
+	if !hasChange {
+		t.Fatalf("expected list-diff with separate-named to detect option-sensitive formatting")
+	}
+	if got, want := stdout, filePath+"\n"; got != want {
+		t.Fatalf("unexpected list-diff output after option change: got %q want %q", got, want)
+	}
+}
+
+func TestProcessPaths_MutatingCacheRespectsOptionFingerprint(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "separate_named_write.go")
+
+	input := []byte(`package main
+
+import (
+	"github.com/google/uuid"
+	errors "github.com/pkg/errors"
+)
+
+func main() {
+	_, _ = uuid.New(), errors.New("cached write")
+}
+`)
+	if err := os.WriteFile(filePath, input, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	origCfg := cfg
+	defer func() { cfg = origCfg }()
+
+	cfg = Config{
+		projectName:      "example.com/test",
+		output:           "file",
+		isUseCache:       true,
+		useMetadataCache: true,
+	}
+
+	hasChange, err := processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, nil)
+	if err != nil {
+		t.Fatalf("default processPaths returned error: %v", err)
+	}
+	if hasChange {
+		t.Fatalf("expected default mutating run to leave already-default-formatted file unchanged")
+	}
+
+	cfg.shouldSeparateNamedImports = true
+	hasChange, err = processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, reviser.SourceFileOptions{reviser.WithSeparatedNamedImports})
+	if err != nil {
+		t.Fatalf("separate-named processPaths returned error: %v", err)
+	}
+	if !hasChange {
+		t.Fatalf("expected separate-named run to bypass default cache entry and rewrite file")
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read rewritten fixture: %v", err)
+	}
+	if !bytes.Contains(content, []byte("\n\t\"github.com/google/uuid\"\n\n\terrors \"github.com/pkg/errors\"")) {
+		t.Fatalf("expected named import to be separated after option change:\n%s", content)
+	}
+}
+
+func TestProcessPaths_ListDiffWriteReportsOptionMismatchDespiteExistingCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "list_write_separate_named.go")
+
+	input := []byte(`package main
+
+import (
+	"github.com/google/uuid"
+	errors "github.com/pkg/errors"
+)
+
+func main() {
+	_, _ = uuid.New(), errors.New("cached list write")
+}
+`)
+	if err := os.WriteFile(filePath, input, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	origCfg := cfg
+	defer func() { cfg = origCfg }()
+
+	cfg = Config{
+		projectName:      "example.com/test",
+		output:           "file",
+		isUseCache:       true,
+		useMetadataCache: true,
+	}
+
+	hasChange, err := processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, nil)
+	if err != nil {
+		t.Fatalf("default processPaths returned error: %v", err)
+	}
+	if hasChange {
+		t.Fatalf("expected default mutating run to leave already-default-formatted file unchanged")
+	}
+
+	cfg.output = "write"
+	cfg.listFileName = true
+	cfg.shouldSeparateNamedImports = true
+	stdout := captureStdout(t, func() {
+		hasChange, err = processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, reviser.SourceFileOptions{reviser.WithSeparatedNamedImports})
+		if err != nil {
+			t.Fatalf("list-diff write processPaths returned error: %v", err)
+		}
+	})
+	if !hasChange {
+		t.Fatalf("expected list-diff write to bypass default cache entry and report change")
+	}
+	if got, want := stdout, filePath+"\n"; got != want {
+		t.Fatalf("unexpected list-diff write output after option change: got %q want %q", got, want)
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read rewritten fixture: %v", err)
+	}
+	if !bytes.Contains(content, []byte("\n\t\"github.com/google/uuid\"\n\n\terrors \"github.com/pkg/errors\"")) {
+		t.Fatalf("expected list-diff write to rewrite with separated named import:\n%s", content)
 	}
 }
 
@@ -287,6 +482,36 @@ func main() {
 	}
 	if entry != nil {
 		t.Fatalf("expected list-only mode not to persist cache state, got %+v", *entry)
+	}
+}
+
+func TestResultPostProcessUsesProvidedConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "result.go")
+	original := []byte("package main\n")
+	formatted := []byte("package main\n\nfunc main() {}\n")
+	if err := os.WriteFile(filePath, original, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	origCfg := cfg
+	cfg = Config{
+		output:       "stdout",
+		listFileName: true,
+	}
+	defer func() { cfg = origCfg }()
+
+	localCfg := Config{output: "file"}
+	if err := resultPostProcess(&localCfg, true, filePath, formatted); err != nil {
+		t.Fatalf("resultPostProcess returned error: %v", err)
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read post-processed file: %v", err)
+	}
+	if !bytes.Equal(content, formatted) {
+		t.Fatalf("expected provided file config to control output\nwant:\n%s\n got:\n%s", formatted, content)
 	}
 }
 

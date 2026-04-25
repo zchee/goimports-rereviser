@@ -13,13 +13,20 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
+const (
+	cacheDirPerm     fs.FileMode = 0o700
+	cacheFilePerm    fs.FileMode = 0o600
+	cacheTempPattern             = ".goimports-rereviser-*"
+)
+
 // CacheEntry represents the cached state of a file.
 // Hash is always recorded; Size and ModTime are optional and only persisted
 // when metadata-aware caching is enabled.
 type CacheEntry struct {
-	Hash    string `json:"hash"`
-	Size    int64  `json:"size,omitempty"`
-	ModTime int64  `json:"mod_time,omitempty"`
+	Hash        string `json:"hash"`
+	Size        int64  `json:"size,omitempty"`
+	ModTime     int64  `json:"mod_time,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
 func cacheFilePath(cacheDir, absPath string) string {
@@ -68,19 +75,92 @@ func readCacheEntry(cacheDir, absPath string) (*CacheEntry, error) {
 	return &entry, nil
 }
 
+// EnsureCacheDir creates the cache directory with private permissions and
+// tightens an existing directory when the platform supports permission bits.
+func EnsureCacheDir(cacheDir string) error {
+	if cacheDir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(cacheDir, cacheDirPerm); err != nil {
+		return err
+	}
+	info, err := os.Lstat(cacheDir)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("cache path must not be a symlink: %s", cacheDir)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("cache path is not a directory: %s", cacheDir)
+	}
+	if err := os.Chmod(cacheDir, cacheDirPerm); err != nil {
+		return err
+	}
+	info, err = os.Lstat(cacheDir)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("cache path became a symlink: %s", cacheDir)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("cache path is not a directory: %s", cacheDir)
+	}
+	return nil
+}
+
+func writeFileAtomic(path string, payload []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, cacheTempPattern)
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if err := tmp.Chmod(cacheFilePerm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(payload); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
+}
+
 // writeCacheEntry persists the given entry. When Size/ModTime are zero the
 // entry is stored in the legacy hash-only format to stay backward compatible
 // and minimize file size.
 func writeCacheEntry(cacheDir, absPath string, entry CacheEntry) error {
+	if cacheDir == "" {
+		return nil
+	}
+	if err := EnsureCacheDir(cacheDir); err != nil {
+		return err
+	}
 	cacheFile := cacheFilePath(cacheDir, absPath)
-	if entry.Size == 0 && entry.ModTime == 0 {
-		return os.WriteFile(cacheFile, []byte(entry.Hash), 0o644)
+	if entry.Size == 0 && entry.ModTime == 0 && entry.Fingerprint == "" {
+		return writeFileAtomic(cacheFile, []byte(entry.Hash))
 	}
 	payload, err := json.Marshal(entry)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(cacheFile, payload, 0o644)
+	return writeFileAtomic(cacheFile, payload)
 }
 
 func fileMetadata(path string) (size, modTime int64, err error) {
@@ -104,11 +184,11 @@ func metadataMatches(entry *CacheEntry, size, modTime int64) bool {
 
 // cacheEntryForMetadata returns a populated CacheEntry when metadata could be
 // collected, otherwise falls back to a hash-only entry.
-func cacheEntryForMetadata(hash string, size, modTime int64) CacheEntry {
+func cacheEntryForMetadata(hash string, size, modTime int64, fingerprint string) CacheEntry {
 	if size == 0 || modTime == 0 {
-		return CacheEntry{Hash: hash}
+		return CacheEntry{Hash: hash, Fingerprint: fingerprint}
 	}
-	return CacheEntry{Hash: hash, Size: size, ModTime: modTime}
+	return CacheEntry{Hash: hash, Size: size, ModTime: modTime, Fingerprint: fingerprint}
 }
 
 // NewCacheEntry builds the cache entry for the given path and hash. When
@@ -116,17 +196,31 @@ func cacheEntryForMetadata(hash string, size, modTime int64) CacheEntry {
 // enable metadata-based skipping. If metadata retrieval fails with fs.ErrNotExist
 // a hash-only entry is returned.
 func NewCacheEntry(absPath, hash string, withMetadata bool) (CacheEntry, error) {
+	return NewCacheEntryWithFingerprint(absPath, hash, withMetadata, "")
+}
+
+// NewCacheEntryWithFingerprint builds a cache entry tied to the formatter
+// configuration that produced it. A non-empty fingerprint must match during
+// skip checks before hash or metadata equality can skip processing.
+func NewCacheEntryWithFingerprint(absPath, hash string, withMetadata bool, fingerprint string) (CacheEntry, error) {
 	if !withMetadata {
-		return CacheEntry{Hash: hash}, nil
+		return CacheEntry{Hash: hash, Fingerprint: fingerprint}, nil
 	}
 	size, modTime, err := fileMetadata(absPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return CacheEntry{Hash: hash}, nil
+			return CacheEntry{Hash: hash, Fingerprint: fingerprint}, nil
 		}
 		return CacheEntry{}, err
 	}
-	return cacheEntryForMetadata(hash, size, modTime), nil
+	return cacheEntryForMetadata(hash, size, modTime, fingerprint), nil
+}
+
+func cacheFingerprintMatches(entry *CacheEntry, fingerprint string) bool {
+	if fingerprint == "" {
+		return true
+	}
+	return entry != nil && entry.Fingerprint == fingerprint
 }
 
 func hashFile(path string) (string, error) {
@@ -147,6 +241,12 @@ func hashFile(path string) (string, error) {
 // ShouldSkipByHash verifies content hash equality, matching the legacy cache
 // behavior that reads the full file to confirm no changes.
 func ShouldSkipByHash(cacheDir, absPath string) (bool, error) {
+	return ShouldSkipByHashWithFingerprint(cacheDir, absPath, "")
+}
+
+// ShouldSkipByHashWithFingerprint verifies content hash equality only when the
+// cached formatter fingerprint matches the requested fingerprint.
+func ShouldSkipByHashWithFingerprint(cacheDir, absPath, fingerprint string) (bool, error) {
 	entry, err := readCacheEntry(cacheDir, absPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -154,7 +254,7 @@ func ShouldSkipByHash(cacheDir, absPath string) (bool, error) {
 		}
 		return false, err
 	}
-	if entry == nil || entry.Hash == "" {
+	if entry == nil || entry.Hash == "" || !cacheFingerprintMatches(entry, fingerprint) {
 		return false, nil
 	}
 	currentHash, err := hashFile(absPath)
@@ -172,6 +272,12 @@ func ShouldSkipByHash(cacheDir, absPath string) (bool, error) {
 // It falls back to hash verification when metadata is not available in the cache
 // entry and removes stale cache files when the source file has been deleted.
 func ShouldSkipByMetadata(cacheDir, absPath string) (bool, error) {
+	return ShouldSkipByMetadataWithFingerprint(cacheDir, absPath, "")
+}
+
+// ShouldSkipByMetadataWithFingerprint uses metadata only when the cached
+// formatter fingerprint matches the requested fingerprint.
+func ShouldSkipByMetadataWithFingerprint(cacheDir, absPath, fingerprint string) (bool, error) {
 	entry, err := readCacheEntry(cacheDir, absPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -179,11 +285,11 @@ func ShouldSkipByMetadata(cacheDir, absPath string) (bool, error) {
 		}
 		return false, err
 	}
-	if entry == nil {
+	if entry == nil || !cacheFingerprintMatches(entry, fingerprint) {
 		return false, nil
 	}
 	if entry.Size == 0 || entry.ModTime == 0 {
-		return ShouldSkipByHash(cacheDir, absPath)
+		return ShouldSkipByHashWithFingerprint(cacheDir, absPath, fingerprint)
 	}
 	size, modTime, statErr := fileMetadata(absPath)
 	if statErr != nil {
@@ -227,11 +333,17 @@ func CacheFilePath(cacheDir, absPath string) string {
 // ShouldSkip routes to the preferred strategy (metadata-first by default) and
 // falls back to hash-based verification when metadata is unavailable.
 func ShouldSkip(cacheDir, absPath string, preferMetadata bool) (bool, error) {
+	return ShouldSkipWithFingerprint(cacheDir, absPath, preferMetadata, "")
+}
+
+// ShouldSkipWithFingerprint routes to the preferred strategy and rejects cache
+// hits produced by a different formatter configuration.
+func ShouldSkipWithFingerprint(cacheDir, absPath string, preferMetadata bool, fingerprint string) (bool, error) {
 	if cacheDir == "" {
 		return false, nil
 	}
 	if preferMetadata {
-		return ShouldSkipByMetadata(cacheDir, absPath)
+		return ShouldSkipByMetadataWithFingerprint(cacheDir, absPath, fingerprint)
 	}
-	return ShouldSkipByHash(cacheDir, absPath)
+	return ShouldSkipByHashWithFingerprint(cacheDir, absPath, fingerprint)
 }

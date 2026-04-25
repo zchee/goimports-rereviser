@@ -160,7 +160,7 @@ func run() exitCode {
 			cacheDir = filepath.Join(usr.HomeDir, ".cache", "goimports-rereviser")
 		}
 
-		if err := os.MkdirAll(cacheDir, os.ModePerm); err != nil {
+		if err := reviser.EnsureCacheDir(cacheDir); err != nil {
 			log.Fatalf("Failed to create cache directory: %+v\n", err)
 		}
 	}
@@ -216,11 +216,12 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 			}
 
 			if _, ok := reviser.IsDir(pathValue); ok {
+				cacheFingerprint := formatterCacheFingerprint(cfg, originProjectName)
 				if cfg.listFileName {
 					dir := reviser.NewSourceDir(originProjectName, pathValue, cfg.isRecursive, cfg.excludes).
 						WithWorkerPool(getSharedPool())
 					if cfg.isUseCache && cacheDir != "" {
-						dir = dir.WithCache(cacheDir)
+						dir = dir.WithCache(cacheDir).WithCacheFingerprint(cacheFingerprint)
 						if !cfg.useMetadataCache {
 							dir = dir.WithoutMetadataCache()
 						}
@@ -242,7 +243,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 				dir := reviser.NewSourceDir(originProjectName, pathValue, cfg.isRecursive, cfg.excludes).
 					WithWorkerPool(getSharedPool())
 				if cfg.isUseCache && cacheDir != "" {
-					dir = dir.WithCache(cacheDir)
+					dir = dir.WithCache(cacheDir).WithCacheFingerprint(cacheFingerprint)
 					if !cfg.useMetadataCache {
 						dir = dir.WithoutMetadataCache()
 					}
@@ -268,12 +269,15 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 				pathHasChange   bool
 			)
 
-			isMutatingOutput := pathToProcess != reviser.StandardInput &&
+			canReadCache := pathToProcess != reviser.StandardInput &&
 				cfg.output != "stdout" &&
-				!(cfg.listFileName && cfg.output != "write")
+				(!cfg.listFileName || cfg.output == "write")
+			canWriteCache := canReadCache
 
-			if cfg.isUseCache && cacheDir != "" && isMutatingOutput {
-				skip, checkErr := reviser.ShouldSkip(cacheDir, pathToProcess, cfg.useMetadataCache)
+			cacheFingerprint := formatterCacheFingerprint(cfg, originProjectName)
+
+			if cfg.isUseCache && cacheDir != "" && canReadCache {
+				skip, checkErr := reviser.ShouldSkipWithFingerprint(cacheDir, pathToProcess, cfg.useMetadataCache, cacheFingerprint)
 				if checkErr != nil {
 					return fmt.Errorf("Failed to evaluate cache for %s: %w", pathToProcess, checkErr)
 				}
@@ -293,18 +297,18 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 				hasChangeMu.Unlock()
 			}
 
-			if err := resultPostProcess(pathHasChange, pathToProcess, formattedOutput); err != nil {
+			if err := resultPostProcess(cfg, pathHasChange, pathToProcess, formattedOutput); err != nil {
 				return err
 			}
 
-			if cfg.isUseCache && cacheDir != "" && isMutatingOutput {
+			if cfg.isUseCache && cacheDir != "" && canWriteCache {
 				cacheContent := originalContent
 				if pathHasChange {
 					cacheContent = formattedOutput
 				}
 
 				hash := reviser.ComputeContentHash(cacheContent)
-				entry, entryErr := reviser.NewCacheEntry(pathToProcess, hash, cfg.useMetadataCache)
+				entry, entryErr := reviser.NewCacheEntryWithFingerprint(pathToProcess, hash, cfg.useMetadataCache, cacheFingerprint)
 				if entryErr != nil {
 					return fmt.Errorf("Failed to build cache entry for %s: %w", pathToProcess, entryErr)
 				}
@@ -331,7 +335,21 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 	return hasChange, nil
 }
 
-func resultPostProcess(hasChange bool, originFilePath string, formattedOutput []byte) error {
+func formatterCacheFingerprint(cfg *Config, projectName string) string {
+	return fmt.Sprintf(
+		"v1|project=%s|imports-order=%s|company-prefixes=%s|rm-unused=%t|set-alias=%t|format=%t|separate-named=%t|apply-generated=%t",
+		projectName,
+		cfg.importsOrder,
+		cfg.companyPkgPrefixes,
+		cfg.shouldRemoveUnusedImports,
+		cfg.shouldSetAlias,
+		cfg.shouldFormat,
+		cfg.shouldSeparateNamedImports,
+		cfg.shouldApplyToGeneratedFiles,
+	)
+}
+
+func resultPostProcess(cfg *Config, hasChange bool, originFilePath string, formattedOutput []byte) error {
 	switch {
 	case hasChange && cfg.listFileName && cfg.output != "write":
 		fmt.Println(originFilePath)

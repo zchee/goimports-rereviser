@@ -1,11 +1,15 @@
 package reviser
 
 import (
+	"bytes"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/alitto/pond"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -311,6 +315,73 @@ func main() {
 	}
 }
 
+func TestSourceDir_FindWithWorkerPoolWaitsForResults(t *testing.T) {
+	t.Parallel()
+
+	project := "github.com/example/project"
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "unformatted.go")
+	unformatted := []byte("package testdata\n\nimport (\n\t\"github.com/pkg/errors\"\n\t\"fmt\"\n)\n\nfunc main() {\n\tfmt.Println(errors.New(\"dir list\"))\n}\n")
+	if err := os.WriteFile(filePath, unformatted, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	pool := pond.New(1, 0)
+	defer pool.StopAndWait()
+
+	files, err := NewSourceDir(project, tmpDir, true, "").
+		WithWorkerPool(pool).
+		Find()
+	if err != nil {
+		t.Fatalf("Find returned error: %v", err)
+	}
+	if files == nil {
+		t.Fatalf("expected Find to report the unformatted file")
+	}
+	if diff := cmp.Diff([]string{filePath}, files.List()); diff != "" {
+		t.Fatalf("unformatted files mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestSourceDir_FindDoesNotWriteCache(t *testing.T) {
+	t.Parallel()
+
+	project := "github.com/example/project"
+	tmpDir := t.TempDir()
+	cacheDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "unformatted.go")
+	unformatted := []byte("package testdata\n\nimport (\n\t\"github.com/pkg/errors\"\n\t\"fmt\"\n)\n\nfunc main() {\n\tfmt.Println(errors.New(\"dir cache\"))\n}\n")
+	if err := os.WriteFile(filePath, unformatted, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	files, err := NewSourceDir(project, tmpDir, true, "").
+		WithCache(cacheDir).
+		Find()
+	if err != nil {
+		t.Fatalf("Find returned error: %v", err)
+	}
+	if files == nil {
+		t.Fatalf("expected Find to report the unformatted file")
+	}
+
+	entry, err := ReadCacheEntry(cacheDir, filePath)
+	if err != nil {
+		t.Fatalf("ReadCacheEntry returned error: %v", err)
+	}
+	if entry != nil {
+		t.Fatalf("expected Find not to write cache entries, got %+v", *entry)
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read fixture after Find: %v", err)
+	}
+	if diff := cmp.Diff(string(unformatted), string(content)); diff != "" {
+		t.Fatalf("Find should not mutate files (-want +got):\n%s", diff)
+	}
+}
+
 func TestSourceDir_Fix_CacheSkipsUnchangedFiles(t *testing.T) {
 	t.Parallel()
 
@@ -366,6 +437,111 @@ func main() {
 	}
 	if skip {
 		t.Fatalf("expected cache miss after file modification")
+	}
+}
+
+func TestSourceDir_Fix_CacheRespectsFingerprint(t *testing.T) {
+	t.Parallel()
+
+	project := "github.com/example/project"
+	tmpDir := t.TempDir()
+	cacheDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "separate_named.go")
+
+	input := []byte(`package testdata
+
+import (
+	"github.com/google/uuid"
+	errors "github.com/pkg/errors"
+)
+
+func main() {
+	_, _ = uuid.New(), errors.New("cached dir")
+}
+`)
+	if err := os.WriteFile(filePath, input, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	if err := NewSourceDir(project, tmpDir, true, "").
+		WithSequentialThreshold(0).
+		WithCache(cacheDir).
+		WithCacheFingerprint("default").
+		Fix(); err != nil {
+		t.Fatalf("default Fix returned error: %v", err)
+	}
+
+	contentAfterDefault, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read fixture after default Fix: %v", err)
+	}
+	if !bytes.Equal(contentAfterDefault, input) {
+		t.Fatalf("expected default Fix to leave already-default-formatted file unchanged\nwant:\n%s\n got:\n%s", input, contentAfterDefault)
+	}
+
+	if err := NewSourceDir(project, tmpDir, true, "").
+		WithSequentialThreshold(0).
+		WithCache(cacheDir).
+		WithCacheFingerprint("separate-named").
+		Fix(WithSeparatedNamedImports); err != nil {
+		t.Fatalf("separate-named Fix returned error: %v", err)
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read rewritten fixture: %v", err)
+	}
+	if !bytes.Contains(content, []byte("\n\t\"github.com/google/uuid\"\n\n\terrors \"github.com/pkg/errors\"")) {
+		t.Fatalf("expected directory Fix to rewrite with separated named import:\n%s", content)
+	}
+}
+
+func TestSourceDir_Fix_ReturnsWriteErrorWithoutCaching(t *testing.T) {
+	project := "github.com/example/project"
+	tmpDir := t.TempDir()
+	cacheDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "write_error.go")
+	writeErr := errors.New("injected write failure")
+
+	unformatted := []byte(`package testdata
+
+import (
+	"github.com/pkg/errors"
+	"fmt"
+)
+
+func main() {
+	fmt.Println(errors.New("readonly"))
+}
+`)
+	if err := os.WriteFile(filePath, unformatted, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	dir := NewSourceDir(project, tmpDir, true, "").
+		WithSequentialThreshold(0).
+		WithCache(cacheDir)
+	dir.writeFile = func(string, []byte, fs.FileMode) error {
+		return writeErr
+	}
+
+	err := dir.Fix()
+	if err == nil {
+		t.Fatalf("expected injected write failure to be returned")
+	}
+	if !strings.Contains(err.Error(), "failed to write fixed result to file") {
+		t.Fatalf("expected write failure to be returned, got: %v", err)
+	}
+	if !errors.Is(err, writeErr) {
+		t.Fatalf("expected returned error to wrap injected write failure, got: %v", err)
+	}
+
+	entry, readErr := ReadCacheEntry(cacheDir, filePath)
+	if readErr != nil {
+		t.Fatalf("ReadCacheEntry returned error: %v", readErr)
+	}
+	if entry != nil {
+		t.Fatalf("expected failed write not to cache formatted content, got %+v", *entry)
 	}
 }
 
