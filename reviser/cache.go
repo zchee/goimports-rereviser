@@ -13,10 +13,11 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
+const cacheTempPattern = ".goimports-rereviser-*"
+
 const (
-	cacheDirPerm     fs.FileMode = 0o700
-	cacheFilePerm    fs.FileMode = 0o600
-	cacheTempPattern             = ".goimports-rereviser-*"
+	cacheDirPerm  fs.FileMode = 0o700
+	cacheFilePerm fs.FileMode = 0o600
 )
 
 // CacheEntry represents the cached state of a file.
