@@ -83,7 +83,7 @@ func writeCacheEntry(cacheDir, absPath string, entry CacheEntry) error {
 	return os.WriteFile(cacheFile, payload, 0o644)
 }
 
-func fileMetadata(path string) (size int64, modTime int64, err error) {
+func fileMetadata(path string) (size, modTime int64, err error) {
 	info, statErr := os.Stat(path)
 	if statErr != nil {
 		return 0, 0, statErr
@@ -92,7 +92,7 @@ func fileMetadata(path string) (size int64, modTime int64, err error) {
 }
 
 // metadataMatches compares cached metadata with the current file info.
-func metadataMatches(entry *CacheEntry, size int64, modTime int64) bool {
+func metadataMatches(entry *CacheEntry, size, modTime int64) bool {
 	if entry == nil {
 		return false
 	}
@@ -104,7 +104,7 @@ func metadataMatches(entry *CacheEntry, size int64, modTime int64) bool {
 
 // cacheEntryForMetadata returns a populated CacheEntry when metadata could be
 // collected, otherwise falls back to a hash-only entry.
-func cacheEntryForMetadata(hash string, size int64, modTime int64) CacheEntry {
+func cacheEntryForMetadata(hash string, size, modTime int64) CacheEntry {
 	if size == 0 || modTime == 0 {
 		return CacheEntry{Hash: hash}
 	}
