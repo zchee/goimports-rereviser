@@ -70,7 +70,7 @@ dotted - imports with "." alias.`,
 	flag.BoolVar(&cfg.setExitStatus, "set-exit-status", false, `set the exit status to 1 if a change is needed/made. Optional parameter.`)
 	flag.BoolVar(&cfg.isRecursive, "recursive", false, `Apply rules recursively if target is a directory. In case of ./... execution will be recursively applied by default. Optional parameter.`)
 	flag.BoolVar(&cfg.isUseCache, "use-cache", false, `Use cache to improve performance. Optional parameter.`)
-	flag.BoolVar(&cfg.useMetadataCache, "cache-fast-skip", true, `Metadata-first cache path (default). Uses file metadata to skip hashing unchanged files; disable with -cache-fast-skip=false.`)
+	flag.BoolVar(&cfg.useMetadataCache, "cache-fast-skip", true, `When used with -use-cache, prefer file metadata before hashing unchanged files; disable with -cache-fast-skip=false.`)
 
 	flag.BoolVar(&cfg.shouldRemoveUnusedImports, "rm-unused", false, `Remove unused imports. Optional parameter.`)
 	flag.BoolVar(&cfg.shouldSetAlias, "set-alias", false, `Set alias for versioned package names, like 'github.com/go-pg/pg/v9'. In this case import will be set as 'pg \"github.com/go-pg/pg/v9\"'. Optional parameter.`)
@@ -103,10 +103,6 @@ func run() exitCode {
 
 	if cfg.shouldShowVersion {
 		return printVersion()
-	}
-
-	if cfg.useMetadataCache && !cfg.isUseCache {
-		return printUsageAndExit(errors.New("cache-fast-skip requires --use-cache"))
 	}
 
 	originPaths := flag.Args()
@@ -268,10 +264,15 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 
 			var (
 				formattedOutput []byte
+				originalContent []byte
 				pathHasChange   bool
 			)
 
-			if cfg.isUseCache {
+			isMutatingOutput := pathToProcess != reviser.StandardInput &&
+				cfg.output != "stdout" &&
+				!(cfg.listFileName && cfg.output != "write")
+
+			if cfg.isUseCache && cacheDir != "" && isMutatingOutput {
 				skip, checkErr := reviser.ShouldSkip(cacheDir, pathToProcess, cfg.useMetadataCache)
 				if checkErr != nil {
 					return fmt.Errorf("Failed to evaluate cache for %s: %w", pathToProcess, checkErr)
@@ -281,13 +282,28 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 				}
 			}
 
-			formattedOutput, _, pathHasChange, err = reviser.NewSourceFile(originProjectName, pathToProcess).Fix(options...)
+			formattedOutput, originalContent, pathHasChange, err = reviser.NewSourceFile(originProjectName, pathToProcess).Fix(options...)
 			if err != nil {
 				return fmt.Errorf("Failed to fix file %s: %w", pathToProcess, err)
 			}
 
-			if cfg.isUseCache {
-				hash := reviser.ComputeContentHash(formattedOutput)
+			if pathHasChange {
+				hasChangeMu.Lock()
+				hasChange = true
+				hasChangeMu.Unlock()
+			}
+
+			if err := resultPostProcess(pathHasChange, pathToProcess, formattedOutput); err != nil {
+				return err
+			}
+
+			if cfg.isUseCache && cacheDir != "" && isMutatingOutput {
+				cacheContent := originalContent
+				if pathHasChange {
+					cacheContent = formattedOutput
+				}
+
+				hash := reviser.ComputeContentHash(cacheContent)
 				entry, entryErr := reviser.NewCacheEntry(pathToProcess, hash, cfg.useMetadataCache)
 				if entryErr != nil {
 					return fmt.Errorf("Failed to build cache entry for %s: %w", pathToProcess, entryErr)
@@ -298,13 +314,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 				}
 			}
 
-			if pathHasChange {
-				hasChangeMu.Lock()
-				hasChange = true
-				hasChangeMu.Unlock()
-			}
-
-			return resultPostProcess(pathHasChange, pathToProcess, formattedOutput)
+			return nil
 		})
 	}
 
@@ -330,11 +340,13 @@ func resultPostProcess(hasChange bool, originFilePath string, formattedOutput []
 		fmt.Print(string(formattedOutput))
 
 	case cfg.output == "file" || cfg.output == "write":
-		if err := os.WriteFile(originFilePath, formattedOutput, 0o644); err != nil {
-			return fmt.Errorf("failed to write fixed result to file(%s): %w", originFilePath, err)
+		if hasChange {
+			if err := os.WriteFile(originFilePath, formattedOutput, 0o644); err != nil {
+				return fmt.Errorf("failed to write fixed result to file(%s): %w", originFilePath, err)
+			}
 		}
 
-		if cfg.listFileName {
+		if cfg.listFileName && hasChange {
 			fmt.Println(originFilePath)
 		}
 

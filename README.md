@@ -64,6 +64,8 @@ Usage of goimports-rereviser:
     	Deprecated
   -output string
     	Can be "file", "write" or "stdout". Whether to write the formatted content back to the file or to stdout. When "write" together with "-list-diff" will list the file name and write back to the file. Optional parameter. (default "file")
+  -cache-fast-skip
+        When used with -use-cache, prefer file metadata before hashing unchanged files; disable with -cache-fast-skip=false. (default true)
   -project-name string
     	Your project name(ex.: github.com/zchee/goimports-rereviser). Optional parameter.
   -recursive
