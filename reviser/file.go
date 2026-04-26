@@ -72,9 +72,12 @@ func (f *SourceFile) Fix(options ...SourceFileOption) ([]byte, []byte, bool, err
 
 	fset := token.NewFileSet()
 
-	pf, err := parser.ParseFile(fset, "", originalContent, parser.ParseComments)
+	pf, err := parser.ParseFile(fset, f.filePath, originalContent, parser.ParseComments)
 	if err != nil {
-		return nil, originalContent, false, err
+		if len(originalContent) == 0 {
+			return nil, originalContent, false, fmt.Errorf("file is empty and cannot be parsed as Go source, use -excludes flag to skip this file: %w", err)
+		}
+		return nil, originalContent, false, fmt.Errorf("file has invalid Go source content, use -excludes flag to skip this file: %w", err)
 	}
 
 	if len(pf.Imports) == 1 && pf.Imports[0].Path.Value == `"C"` {
@@ -214,7 +217,7 @@ func (f *SourceFile) groupImports(
 
 		var isLocalPackageFound bool
 		for _, localPackagePrefix := range localPkgPrefixes {
-			if strings.HasPrefix(pkgWithoutAlias, localPackagePrefix) && !strings.HasPrefix(pkgWithoutAlias, projectName) {
+			if strings.HasPrefix(pkgWithoutAlias, localPackagePrefix) && pkgWithoutAlias != projectName && !strings.HasPrefix(pkgWithoutAlias, projectName+"/") {
 				if f.shouldSeparateNamedImports {
 					if len(values) > 1 {
 						namedProjectLocalPkgs = append(namedProjectLocalPkgs, imprt)
@@ -234,7 +237,7 @@ func (f *SourceFile) groupImports(
 			continue
 		}
 
-		if strings.Contains(pkgWithoutAlias, projectName) {
+		if pkgWithoutAlias == projectName || strings.HasPrefix(pkgWithoutAlias, projectName+"/") {
 			if f.shouldSeparateNamedImports {
 				if len(values) > 1 {
 					namedProjectImports = append(namedProjectImports, imprt)
@@ -562,7 +565,14 @@ func (f *SourceFile) parseImports(file *ast.File) (map[string]*commentsMetadata,
 
 	if shouldRemoveUnusedImports || shouldUseAliasForVersionSuffix {
 		var err error
-		packageImports, err = astutil.LoadPackageDependencies(filepath.Dir(f.filePath), astutil.ParseBuildTag(file))
+		buildTag := astutil.ParseBuildTag(file)
+		packageImports, err = astutil.LoadPackageDependencies(filepath.Dir(f.filePath), buildTag)
+		if err != nil && buildTag != "" {
+			// Retry without build tag — files with custom build constraints
+			// (like tools.go with //+build tools) may cause go list conflicts
+			// when the file imports the project itself.
+			packageImports, err = astutil.LoadPackageDependencies(filepath.Dir(f.filePath), "")
+		}
 		if err != nil {
 			return nil, err
 		}
