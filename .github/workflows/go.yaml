@@ -2,11 +2,9 @@ name: CI
 
 on:
   push:
-    branches: main
+    branches:
+      - main
   pull_request:
-
-permissions:
-  contents: read
 
 jobs:
   test:
@@ -15,6 +13,9 @@ jobs:
         os: [ubuntu-24.04, macos-26-intel] # , windows-latest
 
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v6
@@ -36,22 +37,11 @@ jobs:
         run: |
           go test -race -count=1 -shuffle=on -cover -covermode=atomic -coverpkg=./... -coverprofile=coverage.out -tags='osusergo,netgo,static' -ldflags='-s -w' ./...
 
-      - name: Build
-        run: |
-          go build -v .
-
-  coverage:
-    runs-on: ubuntu-24.04
-    needs: build
-
-    permissions:
-      id-token: write
-
-    steps:
       - name: coverage
         uses: codecov/codecov-action@v6
         with:
           use_oidc: true
-          file: ./coverage
+          files: ./coverage.out
+          flags: ${{ runner.os }}
           fail_ci_if_error: false
           verbose: true
