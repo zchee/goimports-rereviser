@@ -1,27 +1,30 @@
-name: build
+name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: main
   pull_request:
-    branches:
-      - "*"
+
+permissions:
+  contents: read
 
 jobs:
-  build:
+  test:
     strategy:
       matrix:
-        os: [ ubuntu-latest, macos-latest ] # , windows-latest
+        os: [ubuntu-24.04, macos-26-intel] # , windows-latest
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.25.x
+          go-version-file: "go.mod"
           check-latest: true
 
       - name: Get dependencies
@@ -30,21 +33,25 @@ jobs:
           go get github.com/go-pg/pg/v9
 
       - name: Test
-        run: go test -race -cover -coverprofile=coverage -covermode=atomic ./...
+        run: |
+          go test -race -count=1 -shuffle=on -cover -covermode=atomic -coverpkg=./... -coverprofile=coverage.out -tags='osusergo,netgo,static' -ldflags='-s -w' ./...
 
       - name: Build
-        run: go build -v .
+        run: |
+          go build -v .
 
   coverage:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
     needs: build
+
+    permissions:
+      id-token: write
 
     steps:
       - name: coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
+          use_oidc: true
           file: ./coverage
-          flags: unittests
           fail_ci_if_error: false
           verbose: true
