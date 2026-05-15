@@ -345,7 +345,7 @@ func (f *SourceFile) fixImports(
 		dd.Specs = rebuildImports(dd.Tok, commentsMetadata, imports)
 	}
 
-	clearImportDocs(file, importsPositions, commentsMetadata)
+	clearImportDocs(file, importsPositions)
 	removeEmptyImportNode(file)
 }
 
@@ -497,7 +497,7 @@ func addSideEffectSeparators(importGroups [][]string) [][]string {
 	return result
 }
 
-func clearImportDocs(f *ast.File, importsPositions []*importPosition, _ map[string]*commentsMetadata) {
+func clearImportDocs(f *ast.File, importsPositions []*importPosition) {
 	importsComments := make([]*ast.CommentGroup, 0, len(f.Comments))
 
 	for _, comment := range f.Comments {
