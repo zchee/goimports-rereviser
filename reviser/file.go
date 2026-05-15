@@ -189,7 +189,9 @@ func (f *SourceFile) groupImports(
 	)
 
 	for imprt := range importsWithMetadata {
-		if f.importsOrders.hasBlankedImportOrder() && strings.HasPrefix(imprt, "_") {
+		isLinknameBlank := isLinknameBlankImport(imprt, importsWithMetadata[imprt])
+
+		if f.importsOrders.hasBlankedImportOrder() && strings.HasPrefix(imprt, "_") && !isLinknameBlank {
 			blankedImports = append(blankedImports, imprt)
 			continue
 		}
@@ -203,7 +205,7 @@ func (f *SourceFile) groupImports(
 		values := strings.Split(imprt, " ")
 
 		if _, ok := std.StdPackages[pkgWithoutAlias]; ok {
-			if f.shouldSeparateNamedImports {
+			if f.shouldSeparateNamedImports && !isLinknameBlank {
 				if len(values) > 1 {
 					namedStdImports = append(namedStdImports, imprt)
 				} else {
@@ -218,7 +220,7 @@ func (f *SourceFile) groupImports(
 		var isLocalPackageFound bool
 		for _, localPackagePrefix := range localPkgPrefixes {
 			if strings.HasPrefix(pkgWithoutAlias, localPackagePrefix) && pkgWithoutAlias != projectName && !strings.HasPrefix(pkgWithoutAlias, projectName+"/") {
-				if f.shouldSeparateNamedImports {
+				if f.shouldSeparateNamedImports && !isLinknameBlank {
 					if len(values) > 1 {
 						namedProjectLocalPkgs = append(namedProjectLocalPkgs, imprt)
 					} else {
@@ -238,7 +240,7 @@ func (f *SourceFile) groupImports(
 		}
 
 		if pkgWithoutAlias == projectName || strings.HasPrefix(pkgWithoutAlias, projectName+"/") {
-			if f.shouldSeparateNamedImports {
+			if f.shouldSeparateNamedImports && !isLinknameBlank {
 				if len(values) > 1 {
 					namedProjectImports = append(namedProjectImports, imprt)
 				} else {
@@ -250,7 +252,7 @@ func (f *SourceFile) groupImports(
 			continue
 		}
 
-		if f.shouldSeparateNamedImports {
+		if f.shouldSeparateNamedImports && !isLinknameBlank {
 			if len(values) > 1 {
 				namedGeneralImports = append(namedGeneralImports, imprt)
 			} else {
@@ -287,6 +289,36 @@ func (f *SourceFile) groupImports(
 		dotted:  dottedImports,
 	}
 	return result
+}
+
+// linknameBlankCommentMarker is the literal inline comment that marks a
+// blank import (`_ "path"`) as a go:linkname target import. Imports tagged
+// this way are classified by their package path (std/general/company/project)
+// instead of being collected into the blanked group, because they belong
+// next to the std/general/etc imports they support rather than to the
+// generic side-effect blank-import group.
+//
+// Detection is intentionally strict: the inline comment must equal this
+// constant exactly. Trailing text (e.g. `// for go:linkname myFunc`) and
+// block comments (`/* for go:linkname */`) are not matched; the //go:linkname
+// pragma elsewhere in the file is not consulted either.
+const linknameBlankCommentMarker = "// for go:linkname"
+
+// isLinknameBlankImport reports whether imprt is a blank import (`_ "path"`)
+// whose inline line comment equals linknameBlankCommentMarker exactly.
+func isLinknameBlankImport(imprt string, meta *commentsMetadata) bool {
+	if !strings.HasPrefix(imprt, "_ ") {
+		return false
+	}
+	if meta == nil || meta.Comment == nil {
+		return false
+	}
+	for _, c := range meta.Comment.List {
+		if c.Text == linknameBlankCommentMarker {
+			return true
+		}
+	}
+	return false
 }
 
 func skipPackageAlias(pkg string) string {

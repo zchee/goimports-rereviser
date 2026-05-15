@@ -917,6 +917,62 @@ import (
 			wantChange:   true,
 			wantErr:      false,
 		},
+		{
+			name:        "linkname blank import stays in std group even when blanked group is configured",
+			projectName: "github.com/zchee/goimports-rereviser",
+			filePath:    "./testdata/example.go",
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	_ "unsafe" // for go:linkname
+
+	"fmt"
+
+	_ "embed"
+)
+-- want.go --
+package testdata
+
+import (
+	"fmt"
+
+	_ "unsafe" // for go:linkname
+
+	_ "embed"
+)
+`,
+			importsOrder: "std,general,company,project,blanked,dotted",
+			wantChange:   true,
+			wantErr:      false,
+		},
+		{
+			name:        "blank import without linkname marker is routed to blanked group",
+			projectName: "github.com/zchee/goimports-rereviser",
+			filePath:    "./testdata/example.go",
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	_ "unsafe" // pulls in side effects
+
+	"fmt"
+)
+-- want.go --
+package testdata
+
+import (
+	"fmt"
+
+	_ "unsafe" // pulls in side effects
+)
+`,
+			importsOrder: "std,general,company,project,blanked,dotted",
+			wantChange:   true,
+			wantErr:      false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2321,6 +2377,33 @@ import (
 	"github.com/zchee/goimports-rereviser/testdata/innderpkg"
 
 	second "github.com/zchee/goimports-rereviser/testdata/secondpkg" //secondpkg package
+)
+`,
+			wantChange: true,
+			wantErr:    false,
+		},
+		{
+			name:        "linkname blank import is not treated as named import",
+			projectName: "github.com/zchee/goimports-rereviser",
+			filePath:    "./testdata/example.go",
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	_ "unsafe" // for go:linkname
+	"fmt"
+	js "encoding/json"
+)
+-- want.go --
+package testdata
+
+import (
+	"fmt"
+
+	_ "unsafe" // for go:linkname
+
+	js "encoding/json"
 )
 `,
 			wantChange: true,
