@@ -139,19 +139,19 @@ func (d *SourceDir) WithSequentialThreshold(threshold int) *SourceDir {
 	return d
 }
 
-func (d *SourceDir) Fix(options ...SourceFileOption) error {
+func (d *SourceDir) Fix(options ...SourceFileOption) (bool, error) {
 	var ok bool
 	d.dir, ok = IsDir(d.dir)
 	if !ok {
-		return ErrPathIsNotDir
+		return false, ErrPathIsNotDir
 	}
 
 	submit, wait := d.makeSubmitter()
 
-	// Collect files and submit to worker pool
 	var collectErr error
 	var processingErr error
 	var errMu sync.Mutex
+	var changed atomic.Bool
 
 	err := fastwalk.Walk(&fastwalk.DefaultConfig, d.dir, d.walk(
 		submit,
@@ -159,6 +159,7 @@ func (d *SourceDir) Fix(options ...SourceFileOption) error {
 			if !hasChanged {
 				return nil
 			}
+			changed.Store(true)
 			if err := d.writeFile(path, content, 0o644); err != nil {
 				return fmt.Errorf("failed to write fixed result to file(%s): %w", path, err)
 			}
@@ -174,15 +175,14 @@ func (d *SourceDir) Fix(options ...SourceFileOption) error {
 		collectErr = fmt.Errorf("failed to walk dir: %w", err)
 	}
 
-	// Return first error encountered
 	if collectErr != nil {
-		return collectErr
+		return changed.Load(), collectErr
 	}
 	if processingErr != nil {
-		return processingErr
+		return changed.Load(), processingErr
 	}
 
-	return nil
+	return changed.Load(), nil
 }
 
 // Find collection of bad formatted paths
@@ -490,19 +490,6 @@ func IsDir(path string) (string, bool) {
 
 func isGoFile(path string) bool {
 	return filepath.Ext(path) == goExtension
-}
-
-func (d *SourceDir) shouldSkipByCache(path string) (bool, error) {
-	if !d.cacheEnabled || d.cacheDir == "" {
-		return false, nil
-	}
-
-	absPath := path
-	if !filepath.IsAbs(absPath) {
-		absPath = filepath.Join(d.dir, path)
-	}
-
-	return ShouldSkipWithFingerprint(d.cacheDir, absPath, d.useMetadataCache, d.cacheFingerprint)
 }
 
 func (d *SourceDir) writeCache(path string, entry CacheEntry) error {

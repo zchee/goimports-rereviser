@@ -212,7 +212,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 			log.Printf("Processing %s\n", pathValue)
 			originProjectName, err := determineProjectName(cfg.projectName, pathValue)
 			if err != nil {
-				return fmt.Errorf("Could not determine project name for path %s: %w", pathValue, err)
+				return fmt.Errorf("could not determine project name for path %s: %w", pathValue, err)
 			}
 
 			if _, ok := reviser.IsDir(pathValue); ok {
@@ -229,12 +229,14 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 
 					unformattedFiles, err := dir.Find(options...)
 					if err != nil {
-						return fmt.Errorf("Failed to find unformatted files %s: %w", pathValue, err)
+						return fmt.Errorf("failed to find unformatted files %s: %w", pathValue, err)
 					}
 					if unformattedFiles != nil {
 						fmt.Printf("%s\n", unformattedFiles.String())
 						if cfg.setExitStatus {
-							os.Exit(1)
+							hasChangeMu.Lock()
+							hasChange = true
+							hasChangeMu.Unlock()
 						}
 					}
 					return nil
@@ -249,8 +251,14 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 					}
 				}
 
-				if err := dir.Fix(options...); err != nil {
-					return fmt.Errorf("Failed to fix directory %s: %w", pathValue, err)
+				dirHasChange, err := dir.Fix(options...)
+				if err != nil {
+					return fmt.Errorf("failed to fix directory %s: %w", pathValue, err)
+				}
+				if dirHasChange {
+					hasChangeMu.Lock()
+					hasChange = true
+					hasChangeMu.Unlock()
 				}
 				return nil
 			}
@@ -259,7 +267,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 			if pathValue != reviser.StandardInput {
 				pathToProcess, err = filepath.Abs(pathValue)
 				if err != nil {
-					return fmt.Errorf("Failed to get abs path for %s: %w", pathValue, err)
+					return fmt.Errorf("failed to get abs path for %s: %w", pathValue, err)
 				}
 			}
 

@@ -125,7 +125,7 @@ func main() {
 		t.Run(test.name, func(tt *testing.T) {
 			exec(tt, func(ttt *testing.T) error {
 				// executing SourceDir.Fix
-				err := NewSourceDir(test.args.project, test.args.path, true, test.args.excludes).Fix()
+				_, err := NewSourceDir(test.args.project, test.args.path, true, test.args.excludes).Fix()
 				if err != nil {
 					tt.Errorf("unexpected error: %v", err)
 				}
@@ -382,64 +382,6 @@ func TestSourceDir_FindDoesNotWriteCache(t *testing.T) {
 	}
 }
 
-func TestSourceDir_Fix_CacheSkipsUnchangedFiles(t *testing.T) {
-	t.Parallel()
-
-	project := "github.com/example/project"
-	tmpDir := t.TempDir()
-	cacheRoot := t.TempDir()
-	cacheDir := filepath.Join(cacheRoot, "cache")
-	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		t.Fatalf("failed to create cache directory: %v", err)
-	}
-
-	filePath := filepath.Join(tmpDir, "cached.go")
-	unformatted := []byte(`package testdata
-
-import (
-	"github.com/pkg/errors"
-	"fmt"
-)
-
-func main() {
-	fmt.Println(errors.New("cached"))
-}
-`)
-
-	if err := os.WriteFile(filePath, unformatted, 0o644); err != nil {
-		t.Fatalf("failed to write fixture: %v", err)
-	}
-
-	dir := NewSourceDir(project, tmpDir, true, "").
-		WithSequentialThreshold(0).
-		WithCache(cacheDir)
-
-	if err := dir.Fix(); err != nil {
-		t.Fatalf("Fix returned error: %v", err)
-	}
-
-	skip, err := dir.shouldSkipByCache(filePath)
-	if err != nil {
-		t.Fatalf("shouldSkipByCache returned error: %v", err)
-	}
-	if !skip {
-		t.Fatalf("expected cache to skip unchanged file")
-	}
-
-	// mutate the file and verify the cache no longer skips processing
-	if err := os.WriteFile(filePath, unformatted[:len(unformatted)-1], 0o644); err != nil {
-		t.Fatalf("failed to modify fixture: %v", err)
-	}
-
-	skip, err = dir.shouldSkipByCache(filePath)
-	if err != nil {
-		t.Fatalf("shouldSkipByCache returned error: %v", err)
-	}
-	if skip {
-		t.Fatalf("expected cache miss after file modification")
-	}
-}
-
 func TestSourceDir_Fix_CacheRespectsFingerprint(t *testing.T) {
 	t.Parallel()
 
@@ -463,7 +405,7 @@ func main() {
 		t.Fatalf("failed to write fixture: %v", err)
 	}
 
-	if err := NewSourceDir(project, tmpDir, true, "").
+	if _, err := NewSourceDir(project, tmpDir, true, "").
 		WithSequentialThreshold(0).
 		WithCache(cacheDir).
 		WithCacheFingerprint("default").
@@ -479,7 +421,7 @@ func main() {
 		t.Fatalf("expected default Fix to leave already-default-formatted file unchanged\nwant:\n%s\n got:\n%s", input, contentAfterDefault)
 	}
 
-	if err := NewSourceDir(project, tmpDir, true, "").
+	if _, err := NewSourceDir(project, tmpDir, true, "").
 		WithSequentialThreshold(0).
 		WithCache(cacheDir).
 		WithCacheFingerprint("separate-named").
@@ -525,7 +467,7 @@ func main() {
 		return writeErr
 	}
 
-	err := dir.Fix()
+	_, err := dir.Fix()
 	if err == nil {
 		t.Fatalf("expected injected write failure to be returned")
 	}

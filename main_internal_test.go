@@ -541,6 +541,120 @@ func main() {
 	}
 }
 
+func TestProcessPaths_DirRecursive_SetsHasChange(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "a.go")
+	unformatted := []byte(`package main
+
+import (
+	"github.com/pkg/errors"
+	"fmt"
+)
+
+func main() { _ = errors.New(""); _ = fmt.Sprint("") }
+`)
+	if err := os.WriteFile(filePath, unformatted, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	origCfg := cfg
+	cfg = Config{
+		projectName:   "example.com/test",
+		output:        "file",
+		setExitStatus: true,
+		isRecursive:   true,
+	}
+	defer func() { cfg = origCfg }()
+
+	hasChange, err := processPaths(t.Context(), &cfg, []string{tmpDir}, "", nil)
+	if err != nil {
+		t.Fatalf("processPaths returned error: %v", err)
+	}
+	if !hasChange {
+		t.Fatalf("expected hasChange to be true for unformatted directory")
+	}
+}
+
+func TestProcessPaths_DirRecursive_NoChange(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "a.go")
+	formatted := []byte(`package main
+
+import (
+	"fmt"
+
+	"github.com/pkg/errors"
+)
+
+func main() { _ = errors.New(""); _ = fmt.Sprint("") }
+`)
+	if err := os.WriteFile(filePath, formatted, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	origCfg := cfg
+	cfg = Config{
+		projectName:   "example.com/test",
+		output:        "file",
+		setExitStatus: true,
+		isRecursive:   true,
+	}
+	defer func() { cfg = origCfg }()
+
+	hasChange, err := processPaths(t.Context(), &cfg, []string{tmpDir}, "", nil)
+	if err != nil {
+		t.Fatalf("processPaths returned error: %v", err)
+	}
+	if hasChange {
+		t.Fatalf("expected hasChange to be false for already-formatted directory")
+	}
+}
+
+func TestProcessPaths_DirListDiff_SetExitStatus_RunsCleanup(t *testing.T) {
+	tmpDir := t.TempDir()
+	for _, name := range []string{"a.go", "b.go", "c.go"} {
+		unformatted := []byte(`package main
+
+import (
+	"github.com/pkg/errors"
+	"fmt"
+)
+
+func main() { _ = errors.New(""); _ = fmt.Sprint("") }
+`)
+		if err := os.WriteFile(filepath.Join(tmpDir, name), unformatted, 0o644); err != nil {
+			t.Fatalf("failed to write fixture %s: %v", name, err)
+		}
+	}
+
+	origCfg := cfg
+	cfg = Config{
+		projectName:   "example.com/test",
+		output:        "file",
+		listFileName:  true,
+		setExitStatus: true,
+		isRecursive:   true,
+	}
+	defer func() { cfg = origCfg }()
+
+	stdout := captureStdout(t, func() {
+		hasChange, err := processPaths(t.Context(), &cfg, []string{tmpDir}, "", nil)
+		if err != nil {
+			t.Fatalf("processPaths returned error: %v", err)
+		}
+		if !hasChange {
+			t.Fatalf("expected hasChange to be true for list-diff over unformatted dir")
+		}
+	})
+
+	for _, name := range []string{"a.go", "b.go", "c.go"} {
+		expected := filepath.Join(tmpDir, name)
+		if !strings.Contains(stdout, expected) {
+			t.Fatalf("expected list-diff stdout to contain %q, got:\n%s", expected, stdout)
+		}
+	}
+}
+
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 
