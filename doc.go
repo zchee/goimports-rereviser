@@ -3,7 +3,7 @@
 //
 // Example:
 //
-//	goimports-rereviser -project-name github.com/zchee/goimports-rereviser -file-path ./reviser/reviser.go -rm-unused
+//	goimports-rereviser -project-name github.com/zchee/goimports-rereviser -rm-unused ./reviser/file.go
 //
 // Input:
 //

@@ -78,6 +78,14 @@ func readCacheEntry(cacheDir, absPath string) (*CacheEntry, error) {
 
 // EnsureCacheDir creates the cache directory with private permissions and
 // tightens an existing directory when the platform supports permission bits.
+//
+// The MkdirAll -> Lstat -> Chmod -> Lstat sequence intentionally accepts a
+// small TOCTOU window between the post-MkdirAll Lstat and the Chmod. The
+// threat model here is a single-user developer tool writing into its own XDG
+// cache dir, not a multi-tenant adversarial filesystem; an attacker able to
+// race the cache path already controls the user's environment. We pay the
+// double Lstat to catch the common case (the dir was replaced with a symlink
+// by an unrelated process) without locking the cache directory.
 func EnsureCacheDir(cacheDir string) error {
 	if cacheDir == "" {
 		return nil
@@ -111,6 +119,13 @@ func EnsureCacheDir(cacheDir string) error {
 	return nil
 }
 
+// writeFileAtomic writes payload to a sibling temp file and renames it over
+// path so readers never observe a partially-written file. It is name-atomic
+// but not crash-durable: there is no fsync of either the file or its parent
+// directory, so a power loss between rename and the next fs flush can leave
+// path missing or with the old contents. This is intentional for a cache
+// where a missing entry is harmless (the formatter just re-processes the
+// file on the next run) and the durability cost is not worth paying.
 func writeFileAtomic(path string, payload []byte) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, cacheTempPattern)

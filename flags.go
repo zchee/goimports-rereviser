@@ -41,7 +41,7 @@ func getBuildInfo() *debug.BuildInfo {
 	return bi
 }
 
-var modulePathMatcher = regexp.MustCompile(`^github.com/[\w-]+/goimports-rereviser(/v\d+)?@?`) // using a regex here so that this will work with forked repos (at least on github.com)
+var modulePathMatcher = regexp.MustCompile(`^github.com/[\w-]+/goimports-rereviser(/v\d+)?`) // using a regex here so that this will work with forked repos (at least on github.com)
 
 func getMyModuleInfo(bi *debug.BuildInfo) (*debug.Module, error) {
 	if bi == nil {

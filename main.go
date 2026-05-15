@@ -70,7 +70,7 @@ dotted - imports with "." alias.`,
 	flag.BoolVar(&cfg.setExitStatus, "set-exit-status", false, `set the exit status to 1 if a change is needed/made. Optional parameter.`)
 	flag.BoolVar(&cfg.isRecursive, "recursive", false, `Apply rules recursively if target is a directory. In case of ./... execution will be recursively applied by default. Optional parameter.`)
 	flag.BoolVar(&cfg.isUseCache, "use-cache", false, `Use cache to improve performance. Optional parameter.`)
-	flag.BoolVar(&cfg.useMetadataCache, "cache-fast-skip", true, `When used with -use-cache, prefer file metadata before hashing unchanged files; disable with -cache-fast-skip=false.`)
+	flag.BoolVar(&cfg.useMetadataCache, "cache-fast-skip", true, `When used with -use-cache, prefer file metadata before hashing unchanged files; disable with -cache-fast-skip=false. Has no effect without -use-cache.`)
 
 	flag.BoolVar(&cfg.shouldRemoveUnusedImports, "rm-unused", false, `Remove unused imports. Optional parameter.`)
 	flag.BoolVar(&cfg.shouldSetAlias, "set-alias", false, `Set alias for versioned package names, like 'github.com/go-pg/pg/v9'. In this case import will be set as 'pg \"github.com/go-pg/pg/v9\"'. Optional parameter.`)
