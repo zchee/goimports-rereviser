@@ -46,6 +46,35 @@ func TestStringToImportsOrder(t *testing.T) {
 	}
 }
 
+func TestUnique_Deduplicates(t *testing.T) {
+	t.Parallel()
+
+	got := unique([]string{"a", "a", "b", "a", "c", "b"})
+	want := []string{"a", "b", "c"}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("unique mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestStringToImportsOrders_IgnoresDuplicates(t *testing.T) {
+	t.Parallel()
+
+	gotDup, err := StringToImportsOrders("std,std,company,project,general")
+	if err != nil {
+		t.Fatalf("unexpected error from duplicated input: %v", err)
+	}
+	gotUniq, err := StringToImportsOrders("std,company,project,general")
+	if err != nil {
+		t.Fatalf("unexpected error from unique input: %v", err)
+	}
+	if diff := cmp.Diff(gotUniq, gotDup); diff != "" {
+		t.Errorf("expected duplicated input to produce same order as unique input (-want +got):\n%s", diff)
+	}
+	if len(gotDup) != 4 {
+		t.Errorf("expected 4 groups after dedup, got %d: %v", len(gotDup), gotDup)
+	}
+}
+
 func Test_appendGroups(t *testing.T) {
 	type args struct {
 		input [][]string

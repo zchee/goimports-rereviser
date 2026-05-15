@@ -11,17 +11,13 @@ type ImportsOrder string
 
 const (
 	// StdImportsOrder is std libs, e.g. fmt, errors, strings...
-	StdImportsOrder      ImportsOrder = "std"
-	NamedStdImportsOrder ImportsOrder = "namedStd"
+	StdImportsOrder ImportsOrder = "std"
 	// CompanyImportsOrder is packages that belong to the same organization
-	CompanyImportsOrder      ImportsOrder = "company"
-	NamedCompanyImportsOrder ImportsOrder = "namedCompany"
+	CompanyImportsOrder ImportsOrder = "company"
 	// ProjectImportsOrder is packages that are inside the current project
-	ProjectImportsOrder      ImportsOrder = "project"
-	NamedProjectImportsOrder ImportsOrder = "namedProject"
+	ProjectImportsOrder ImportsOrder = "project"
 	// GeneralImportsOrder is packages that are outside. In other words it is general purpose libraries
-	GeneralImportsOrder      ImportsOrder = "general"
-	NamedGeneralImportsOrder ImportsOrder = "namedGeneral"
+	GeneralImportsOrder ImportsOrder = "general"
 	// BlankedImportsOrder is separate group for "_" imports
 	BlankedImportsOrder ImportsOrder = "blanked"
 	// DottedImportsOrder is separate group for "." imports
@@ -128,6 +124,7 @@ func unique(s []string) []string {
 	var list []string
 	for _, entry := range s {
 		if _, ok := keys[entry]; !ok {
+			keys[entry] = struct{}{}
 			list = append(list, entry)
 		}
 	}
