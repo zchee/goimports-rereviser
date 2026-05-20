@@ -1,6 +1,7 @@
 package reviser
 
 import (
+	"go/ast"
 	"os"
 	"strings"
 	"testing"
@@ -28,6 +29,91 @@ func parseTestArchive(t *testing.T, archive string) (input, want []byte) {
 		t.Fatal("txtar archive must contain input.go")
 	}
 	return input, want
+}
+
+func TestIsLinknameBlankImport(t *testing.T) {
+	tests := []struct {
+		name    string
+		imprt   string
+		comment string
+		want    bool
+	}{
+		{
+			name:    "original go linkname marker",
+			imprt:   `_ "unsafe"`,
+			comment: "// for go:linkname",
+			want:    true,
+		},
+		{
+			name:    "short linkname marker",
+			imprt:   `_ "unsafe"`,
+			comment: "// for linkname",
+			want:    true,
+		},
+		{
+			name:    "go linkname usage marker",
+			imprt:   `_ "unsafe"`,
+			comment: "// added for go linkname usage",
+			want:    true,
+		},
+		{
+			name:    "runtime dependency linkname marker",
+			imprt:   `_ "unsafe"`,
+			comment: "// depends on the runtime via a linkname'd function",
+			want:    true,
+		},
+		{
+			name:    "non blank import is not linkname blank import",
+			imprt:   `"unsafe"`,
+			comment: "// for go:linkname",
+			want:    false,
+		},
+		{
+			name:    "unrelated side effect comment",
+			imprt:   `_ "embed"`,
+			comment: "// pulls in side effects",
+			want:    false,
+		},
+		{
+			name:    "block comment is not accepted",
+			imprt:   `_ "unsafe"`,
+			comment: "/* for go:linkname */",
+			want:    false,
+		},
+		{
+			name:    "function-specific linkname marker is accepted",
+			imprt:   `_ "unsafe"`,
+			comment: "// for go:linkname localFunc",
+			want:    true,
+		},
+		{
+			name:    "spaced line comment marker is accepted",
+			imprt:   `_ "unsafe"`,
+			comment: "//   for linkname",
+			want:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			meta := &commentsMetadata{
+				Comment: &ast.CommentGroup{
+					List: []*ast.Comment{{Text: tt.comment}},
+				},
+			}
+
+			got := isLinknameBlankImport(tt.imprt, meta)
+			if got != tt.want {
+				t.Fatalf("isLinknameBlankImport(%q, comment %q) = %v, want %v", tt.imprt, tt.comment, got, tt.want)
+			}
+		})
+	}
+
+	t.Run("nil metadata is not accepted", func(t *testing.T) {
+		if isLinknameBlankImport(`_ "unsafe"`, nil) {
+			t.Fatal("isLinknameBlankImport accepted nil metadata")
+		}
+	})
 }
 
 func TestSourceFile_Fix(t *testing.T) {
@@ -939,6 +1025,36 @@ import (
 	"fmt"
 
 	_ "unsafe" // for go:linkname
+
+	_ "embed"
+)
+`,
+			importsOrder: "std,general,company,project,blanked,dotted",
+			wantChange:   true,
+			wantErr:      false,
+		},
+		{
+			name:        "alternative linkname blank import marker stays in std group",
+			projectName: "github.com/zchee/goimports-rereviser",
+			filePath:    "./testdata/example.go",
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	_ "unsafe" // depends on the runtime via a linkname'd function
+
+	"fmt"
+
+	_ "embed"
+)
+-- want.go --
+package testdata
+
+import (
+	"fmt"
+
+	_ "unsafe" // depends on the runtime via a linkname'd function
 
 	_ "embed"
 )

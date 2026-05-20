@@ -291,21 +291,20 @@ func (f *SourceFile) groupImports(
 	return result
 }
 
-// linknameBlankCommentMarker is the literal inline comment that marks a
-// blank import (`_ "path"`) as a go:linkname target import. Imports tagged
-// this way are classified by their package path (std/general/company/project)
-// instead of being collected into the blanked group, because they belong
-// next to the std/general/etc imports they support rather than to the
-// generic side-effect blank-import group.
+// linknameBlankCommentMarkerRe matches inline comments that mark a blank
+// import (`_ "path"`) as a go:linkname support import. Imports tagged this
+// way are classified by their package path (std/general/company/project)
+// instead of being collected into the blanked group, because they belong next
+// to the std/general/etc imports they support rather than to the generic
+// side-effect blank-import group.
 //
-// Detection is intentionally strict: the inline comment must equal this
-// constant exactly. Trailing text (e.g. `// for go:linkname myFunc`) and
-// block comments (`/* for go:linkname */`) are not matched; the //go:linkname
+// Detection is intentionally scoped to line comments that mention linkname.
+// Block comments (`/* for go:linkname */`) are not matched; the //go:linkname
 // pragma elsewhere in the file is not consulted either.
-const linknameBlankCommentMarker = "// for go:linkname"
+var linknameBlankCommentMarkerRe = regexp.MustCompile(`^//.*\blinkname(?:'d)?\b.*$`)
 
 // isLinknameBlankImport reports whether imprt is a blank import (`_ "path"`)
-// whose inline line comment equals linknameBlankCommentMarker exactly.
+// whose inline line comment matches linknameBlankCommentMarkerRe.
 func isLinknameBlankImport(imprt string, meta *commentsMetadata) bool {
 	if !strings.HasPrefix(imprt, "_ ") {
 		return false
@@ -314,7 +313,7 @@ func isLinknameBlankImport(imprt string, meta *commentsMetadata) bool {
 		return false
 	}
 	for _, c := range meta.Comment.List {
-		if c.Text == linknameBlankCommentMarker {
+		if linknameBlankCommentMarkerRe.MatchString(c.Text) {
 			return true
 		}
 	}
