@@ -42,6 +42,6 @@ jobs:
         with:
           use_oidc: true
           files: ./coverage.out
-          flags: ${{ runner.os }}
+          flags: ${{ runner.os }}-${{ runner.arch }}
           fail_ci_if_error: false
           verbose: true
