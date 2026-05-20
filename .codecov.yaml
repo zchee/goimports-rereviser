@@ -31,10 +31,7 @@ coverage:
         only_pulls: true
         if_not_found: failure
 
-    changes:
-      default:
-        if_not_found: success
-        only_pulls: true
+    changes: false
 
 # https://docs.codecov.com/docs/ignoring-paths
 # prettier-ignore
