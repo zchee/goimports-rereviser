@@ -610,6 +610,105 @@ func main() { _ = errors.New(""); _ = fmt.Sprint("") }
 	}
 }
 
+func TestProcessPaths_DirListDiff_ReportsChangeWithoutSetExitStatus(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "a.go")
+	unformatted := []byte(`package main
+
+import (
+	"github.com/pkg/errors"
+	"fmt"
+)
+
+func main() { _ = errors.New(""); _ = fmt.Sprint("") }
+`)
+	if err := os.WriteFile(filePath, unformatted, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	origCfg := cfg
+	cfg = Config{
+		projectName:  "example.com/test",
+		output:       "file",
+		listFileName: true,
+		isRecursive:  true,
+	}
+	defer func() { cfg = origCfg }()
+
+	stdout := captureStdout(t, func() {
+		hasChange, err := processPaths(t.Context(), &cfg, []string{tmpDir}, "", nil)
+		if err != nil {
+			t.Fatalf("processPaths returned error: %v", err)
+		}
+		if !hasChange {
+			t.Fatalf("expected hasChange to be true for list-diff over unformatted directory without set-exit-status")
+		}
+	})
+
+	if !strings.Contains(stdout, filePath) {
+		t.Fatalf("expected list-diff stdout to contain %q, got:\n%s", filePath, stdout)
+	}
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read fixture after list-diff: %v", err)
+	}
+	if !bytes.Equal(content, unformatted) {
+		t.Fatalf("expected list-diff mode to leave file unchanged\nwant:\n%s\n got:\n%s", unformatted, content)
+	}
+}
+
+func TestProcessPaths_DirRecursive_ReturnsPartialChangeWithError(t *testing.T) {
+	tmpDir := t.TempDir()
+	changedFile := filepath.Join(tmpDir, "a_changed.go")
+	invalidFile := filepath.Join(tmpDir, "z_invalid.go")
+	unformatted := []byte(`package main
+
+import (
+	"github.com/pkg/errors"
+	"fmt"
+)
+
+func main() { _ = errors.New(""); _ = fmt.Sprint("") }
+`)
+	invalid := []byte(`package main
+
+func broken(
+`)
+	if err := os.WriteFile(changedFile, unformatted, 0o644); err != nil {
+		t.Fatalf("failed to write change fixture: %v", err)
+	}
+	if err := os.WriteFile(invalidFile, invalid, 0o644); err != nil {
+		t.Fatalf("failed to write invalid fixture: %v", err)
+	}
+
+	origCfg := cfg
+	cfg = Config{
+		projectName: "example.com/test",
+		output:      "file",
+		isRecursive: true,
+	}
+	defer func() { cfg = origCfg }()
+
+	hasChange, err := processPaths(t.Context(), &cfg, []string{tmpDir}, "", nil)
+	if err == nil {
+		t.Fatalf("expected processPaths to return an error for invalid Go file")
+	}
+	if !strings.Contains(err.Error(), invalidFile) {
+		t.Fatalf("expected error to mention invalid file %q, got: %v", invalidFile, err)
+	}
+	if !hasChange {
+		t.Fatalf("expected hasChange to stay true when directory fix partially changed files before returning an error")
+	}
+
+	content, readErr := os.ReadFile(changedFile)
+	if readErr != nil {
+		t.Fatalf("failed to read changed fixture: %v", readErr)
+	}
+	if !bytes.Contains(content, []byte("\n\t\"fmt\"\n\n\t\"github.com/pkg/errors\"")) {
+		t.Fatalf("expected valid file to be rewritten before the invalid file error:\n%s", content)
+	}
+}
+
 func TestProcessPaths_DirListDiff_SetExitStatus_RunsCleanup(t *testing.T) {
 	tmpDir := t.TempDir()
 	for _, name := range []string{"a.go", "b.go", "c.go"} {

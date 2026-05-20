@@ -194,6 +194,11 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 		sharedPool     *pond.WorkerPool
 		sharedPoolOnce sync.Once
 	)
+	markChanged := func() {
+		hasChangeMu.Lock()
+		hasChange = true
+		hasChangeMu.Unlock()
+	}
 
 	getSharedPool := func() *pond.WorkerPool {
 		sharedPoolOnce.Do(func() {
@@ -233,11 +238,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 					}
 					if unformattedFiles != nil {
 						fmt.Printf("%s\n", unformattedFiles.String())
-						if cfg.setExitStatus {
-							hasChangeMu.Lock()
-							hasChange = true
-							hasChangeMu.Unlock()
-						}
+						markChanged()
 					}
 					return nil
 				}
@@ -252,13 +253,11 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 				}
 
 				dirHasChange, err := dir.Fix(options...)
+				if dirHasChange {
+					markChanged()
+				}
 				if err != nil {
 					return fmt.Errorf("failed to fix directory %s: %w", pathValue, err)
-				}
-				if dirHasChange {
-					hasChangeMu.Lock()
-					hasChange = true
-					hasChangeMu.Unlock()
 				}
 				return nil
 			}
@@ -300,9 +299,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 			}
 
 			if pathHasChange {
-				hasChangeMu.Lock()
-				hasChange = true
-				hasChangeMu.Unlock()
+				markChanged()
 			}
 
 			if err := resultPostProcess(cfg, pathHasChange, pathToProcess, formattedOutput); err != nil {
@@ -337,7 +334,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 	}
 
 	if err != nil {
-		return false, err
+		return hasChange, err
 	}
 
 	return hasChange, nil
