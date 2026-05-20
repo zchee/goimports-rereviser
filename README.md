@@ -55,7 +55,7 @@ Usage of goimports-rereviser:
     	general - libs for general purpose;
     	company - inter-org or your company libs(if you set '-company-prefixes'-option, then 4th group will be split separately. In other case, it will be the part of general purpose libs);
     	project - your local project dependencies;
-    	blanked - imports with "_" alias;
+    	blanked - imports with "_" alias, except blank imports with inline linkname comments;
     	dotted - imports with "." alias.
     	Optional parameter. (default "std,general,company,project")
   -list-diff
@@ -163,6 +163,10 @@ import (
 ```
 
 ### Example with `-imports-order std,general,company,project,blanked,dotted`-option
+
+Blank imports with inline comments that mention `linkname`, such as `_ "unsafe" // for go:linkname`,
+remain in their package-path group. They are not moved to the `blanked` group or separated from the
+standard-library imports they support.
 
 Before usage:
 

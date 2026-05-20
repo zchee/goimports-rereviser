@@ -922,6 +922,38 @@ import (
 			wantErr:      false,
 		},
 		{
+			name:        "linkname blank import stays adjacent to supporting std imports",
+			projectName: "github.com/gaudiy/gaudiy-go-kit",
+			filePath:    "./testdata/example.go",
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	"io"
+	"os"
+	"strings"
+	_ "unsafe" // for go:linkname
+
+	"github.com/kortschak/utter"
+)
+-- want.go --
+package testdata
+
+import (
+	"io"
+	"os"
+	"strings"
+	_ "unsafe" // for go:linkname
+
+	"github.com/kortschak/utter"
+)
+`,
+			importsOrder: "std,general,company,project",
+			wantChange:   false,
+			wantErr:      false,
+		},
+		{
 			name:        "success project,company,general,std",
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
@@ -1023,7 +1055,6 @@ package testdata
 
 import (
 	"fmt"
-
 	_ "unsafe" // for go:linkname
 
 	_ "embed"
@@ -1053,7 +1084,6 @@ package testdata
 
 import (
 	"fmt"
-
 	_ "unsafe" // depends on the runtime via a linkname'd function
 
 	_ "embed"
@@ -2516,7 +2546,6 @@ package testdata
 
 import (
 	"fmt"
-
 	_ "unsafe" // for go:linkname
 
 	js "encoding/json"

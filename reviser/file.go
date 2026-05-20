@@ -372,7 +372,7 @@ func (f *SourceFile) fixImports(
 			},
 		)
 
-		imports := addSideEffectSeparators(f.importsOrders.sortImportsByOrder(groups))
+		imports := addSideEffectSeparators(f.importsOrders.sortImportsByOrder(groups), commentsMetadata)
 		dd.Specs = rebuildImports(dd.Tok, commentsMetadata, imports)
 	}
 
@@ -491,7 +491,7 @@ func rebuildImports(tok token.Token, commentsMetadata map[string]*commentsMetada
 	return specs
 }
 
-func addSideEffectSeparators(importGroups [][]string) [][]string {
+func addSideEffectSeparators(importGroups [][]string, commentsMetadata map[string]*commentsMetadata) [][]string {
 	result := make([][]string, len(importGroups))
 
 	for idx, group := range importGroups {
@@ -503,7 +503,7 @@ func addSideEffectSeparators(importGroups [][]string) [][]string {
 
 		var nonBlanked, blanked []string
 		for _, imprt := range group {
-			if strings.HasPrefix(imprt, "_") {
+			if strings.HasPrefix(imprt, "_") && !isLinknameBlankImport(imprt, commentsMetadata[imprt]) {
 				blanked = append(blanked, imprt)
 				continue
 			}
