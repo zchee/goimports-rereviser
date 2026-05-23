@@ -3,6 +3,7 @@ package reviser
 import (
 	"go/ast"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -2561,7 +2562,7 @@ import (
 			input, want := parseTestArchive(t, tt.archive)
 
 			// Write input to temp file
-			filePath := "./testdata/example.go"
+			filePath := filepath.Join(t.TempDir(), "example.go")
 			if err := os.WriteFile(filePath, input, 0o644); err != nil {
 				t.Fatalf("failed to write test file: %v", err)
 			}

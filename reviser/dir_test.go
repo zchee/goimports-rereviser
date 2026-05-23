@@ -47,24 +47,20 @@ func main() {
 `
 	exec := func(tt *testing.T, fn func(*testing.T) error) {
 		// create test file
-		err := os.MkdirAll(filepath.Dir(testFile), os.ModePerm)
-		if err != nil {
+		if err := os.MkdirAll(filepath.Dir(testFile), os.ModePerm); err != nil {
 			tt.Errorf("unexpected error: %v", err)
 		}
-		err = os.WriteFile(testFile, []byte(originContent), os.ModePerm)
-		if err != nil {
+		if err := os.WriteFile(testFile, []byte(originContent), os.ModePerm); err != nil {
 			tt.Errorf("unexpected error: %v", err)
 		}
 
 		// exec test func
-		err = fn(tt)
-		if err != nil {
+		if err := fn(tt); err != nil {
 			tt.Errorf("unexpected error: %v", err)
 		}
 
-		// remove test file
-		err = os.Remove(testFile)
-		if err != nil {
+		// remove test directory
+		if err := os.RemoveAll(filepath.Dir(filepath.Dir(testFile))); err != nil {
 			tt.Errorf("unexpected error: %v", err)
 		}
 	}
@@ -238,27 +234,24 @@ func main() {
 `
 	exec := func(tt *testing.T, fn func(*testing.T) error) {
 		// create test file
-		err := os.MkdirAll(filepath.Dir(testFile), os.ModePerm)
-		if err != nil {
+		if err := os.MkdirAll(filepath.Dir(testFile), os.ModePerm); err != nil {
 			tt.Errorf("unexpected error: %v", err)
 		}
-		err = os.WriteFile(testFile, []byte(originContent), os.ModePerm)
-		if err != nil {
+		if err := os.WriteFile(testFile, []byte(originContent), os.ModePerm); err != nil {
 			tt.Errorf("unexpected error: %v", err)
 		}
 
 		// exec test func
-		err = fn(tt)
-		if err != nil {
+		if err := fn(tt); err != nil {
 			tt.Errorf("unexpected error: %v", err)
 		}
 
 		// remove test file
-		err = os.Remove(testFile)
-		if err != nil {
+		if err := os.RemoveAll(filepath.Dir(filepath.Dir(testFile))); err != nil {
 			tt.Errorf("unexpected error: %v", err)
 		}
 	}
+
 	var sortedContent string
 	exec(t, func(tt *testing.T) error {
 		sortedData, _, changed, err := NewSourceFile("testdata", testFile).Fix()
