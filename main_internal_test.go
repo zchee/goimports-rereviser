@@ -40,7 +40,7 @@ func main() {}
 		projectName: "example.com/test",
 		output:      "file",
 	}
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	paths := []string{fileA, fileB}
 
@@ -94,7 +94,7 @@ func main() {
 		isUseCache:       true,
 		useMetadataCache: true,
 	}
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	hasChange, err := processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, nil)
 	if err != nil {
@@ -194,7 +194,7 @@ func main() {
 		isUseCache:       true,
 		useMetadataCache: true,
 	}
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	firstStdout := captureStdout(t, func() {
 		hasChange, err := processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, nil)
@@ -252,7 +252,7 @@ func main() {
 	}
 
 	origCfg := cfg
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	cfg = Config{
 		projectName:      "example.com/test",
@@ -313,7 +313,7 @@ func main() {
 	}
 
 	origCfg := cfg
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	cfg = Config{
 		projectName:      "example.com/test",
@@ -369,7 +369,7 @@ func main() {
 	}
 
 	origCfg := cfg
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	cfg = Config{
 		projectName:      "example.com/test",
@@ -439,7 +439,7 @@ func main() {
 		isUseCache:       true,
 		useMetadataCache: true,
 	}
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	expected := filePath + "\n"
 	firstStdout := captureStdout(t, func() {
@@ -499,7 +499,7 @@ func TestResultPostProcessUsesProvidedConfig(t *testing.T) {
 		output:       "stdout",
 		listFileName: true,
 	}
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	localCfg := Config{output: "file"}
 	if err := resultPostProcess(&localCfg, true, filePath, formatted); err != nil {
@@ -564,7 +564,7 @@ func main() { _ = errors.New(""); _ = fmt.Sprint("") }
 		setExitStatus: true,
 		isRecursive:   true,
 	}
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	hasChange, err := processPaths(t.Context(), &cfg, []string{tmpDir}, "", nil)
 	if err != nil {
@@ -599,7 +599,7 @@ func main() { _ = errors.New(""); _ = fmt.Sprint("") }
 		setExitStatus: true,
 		isRecursive:   true,
 	}
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	hasChange, err := processPaths(t.Context(), &cfg, []string{tmpDir}, "", nil)
 	if err != nil {
@@ -633,7 +633,7 @@ func main() { _ = errors.New(""); _ = fmt.Sprint("") }
 		listFileName: true,
 		isRecursive:  true,
 	}
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	stdout := captureStdout(t, func() {
 		hasChange, err := processPaths(t.Context(), &cfg, []string{tmpDir}, "", nil)
@@ -687,7 +687,7 @@ func broken(
 		output:      "file",
 		isRecursive: true,
 	}
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	hasChange, err := processPaths(t.Context(), &cfg, []string{tmpDir}, "", nil)
 	if err == nil {
@@ -734,7 +734,7 @@ func main() { _ = errors.New(""); _ = fmt.Sprint("") }
 		setExitStatus: true,
 		isRecursive:   true,
 	}
-	defer func() { cfg = origCfg }()
+	t.Cleanup(func() { cfg = origCfg })
 
 	stdout := captureStdout(t, func() {
 		hasChange, err := processPaths(t.Context(), &cfg, []string{tmpDir}, "", nil)
@@ -764,9 +764,7 @@ func captureStdout(t *testing.T, fn func()) string {
 
 	originalStdout := os.Stdout
 	os.Stdout = writer
-	defer func() {
-		os.Stdout = originalStdout
-	}()
+	t.Cleanup(func() { os.Stdout = originalStdout })
 
 	outputCh := make(chan string, 1)
 	go func() {
