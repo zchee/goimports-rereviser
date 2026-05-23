@@ -33,70 +33,60 @@ func parseTestArchive(t *testing.T, archive string) (input, want []byte) {
 }
 
 func TestIsLinknameBlankImport(t *testing.T) {
-	tests := []struct {
-		name    string
+	tests := map[string]struct {
 		imprt   string
 		comment string
 		want    bool
 	}{
-		{
-			name:    "original go linkname marker",
+		"original go linkname marker": {
 			imprt:   `_ "unsafe"`,
 			comment: "// for go:linkname",
 			want:    true,
 		},
-		{
-			name:    "short linkname marker",
+		"short linkname marker": {
 			imprt:   `_ "unsafe"`,
 			comment: "// for linkname",
 			want:    true,
 		},
-		{
-			name:    "go linkname usage marker",
+		"go linkname usage marker": {
 			imprt:   `_ "unsafe"`,
 			comment: "// added for go linkname usage",
 			want:    true,
 		},
-		{
-			name:    "runtime dependency linkname marker",
+		"runtime dependency linkname marker": {
 			imprt:   `_ "unsafe"`,
 			comment: "// depends on the runtime via a linkname'd function",
 			want:    true,
 		},
-		{
-			name:    "non blank import is not linkname blank import",
+		"non blank import is not linkname blank import": {
 			imprt:   `"unsafe"`,
 			comment: "// for go:linkname",
 			want:    false,
 		},
-		{
-			name:    "unrelated side effect comment",
+		"unrelated side effect comment": {
 			imprt:   `_ "embed"`,
 			comment: "// pulls in side effects",
 			want:    false,
 		},
-		{
-			name:    "block comment is not accepted",
+		"block comment is not accepted": {
 			imprt:   `_ "unsafe"`,
 			comment: "/* for go:linkname */",
 			want:    false,
 		},
-		{
-			name:    "function-specific linkname marker is accepted",
+		"function-specific linkname marker is accepted": {
 			imprt:   `_ "unsafe"`,
 			comment: "// for go:linkname localFunc",
 			want:    true,
 		},
-		{
-			name:    "spaced line comment marker is accepted",
+		"spaced line comment marker is accepted": {
 			imprt:   `_ "unsafe"`,
 			comment: "//   for linkname",
 			want:    true,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			meta := &commentsMetadata{
 				Comment: &ast.CommentGroup{
 					List: []*ast.Comment{{Text: tt.comment}},
@@ -118,16 +108,14 @@ func TestIsLinknameBlankImport(t *testing.T) {
 }
 
 func TestSourceFile_Fix(t *testing.T) {
-	tests := []struct {
-		name        string
+	tests := map[string]struct {
 		projectName string
 		filePath    string
 		archive     string
 		wantChange  bool
 		wantErr     bool
 	}{
-		{
-			name:        "success with comments",
+		"success with comments": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -162,9 +150,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with auto-generated",
+		"success with auto-generated": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -201,9 +187,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with auto-generated",
+		"success with auto-generated #2": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -240,9 +224,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with directive",
+		"success with directive": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -276,9 +258,7 @@ func main() {
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with std & project deps",
+		"success with std & project deps": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -311,9 +291,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with std & third-party deps",
+		"success with std & third-party deps": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -344,9 +322,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with std deps only",
+		"success with std deps only": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -373,8 +349,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "success with single std deps only",
+		"success with single std deps only": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -394,8 +369,7 @@ import "log"
 			wantChange: false,
 			wantErr:    false,
 		},
-		{
-			name:        "success with third-party deps only",
+		"success with third-party deps only": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -420,8 +394,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "success with single third-party deps",
+		"success with single third-party deps": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -441,9 +414,7 @@ import "golang.org/x/tools/go/packages"
 			wantChange: false,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with project deps only",
+		"success with project deps only": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -469,9 +440,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with preserved doc comment for import",
+		"success with preserved doc comment for import": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -502,9 +471,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "keep comment before side-effect import",
+		"keep comment before side-effect import": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -539,9 +506,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with comment for import",
+		"success with comment for import": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -570,9 +535,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with no changes",
+		"success with no changes": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -596,8 +559,7 @@ import (
 			wantChange: false,
 			wantErr:    false,
 		},
-		{
-			name:        "success no changes by imports and comments",
+		"success no changes by imports and comments": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -632,8 +594,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "success with multiple import statements",
+		"success with multiple import statements": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -662,8 +623,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "preserves cgo import",
+		"preserves cgo import": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/cgo_example.go",
 			archive: `
@@ -695,8 +655,7 @@ import (
 			wantChange: false,
 			wantErr:    false,
 		},
-		{
-			name:        "preserves cgo import with single std deps",
+		"preserves cgo import with single std deps": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/cgo_example.go",
 			archive: `
@@ -722,8 +681,7 @@ import "errors"
 			wantChange: false,
 			wantErr:    false,
 		},
-		{
-			name:        "preserves cgo import with single import",
+		"preserves cgo import with single import": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/cgo_example.go",
 			archive: `
@@ -745,8 +703,7 @@ import "C"
 			wantChange: false,
 			wantErr:    false,
 		},
-		{
-			name:        "preserves cgo import even when reordering",
+		"preserves cgo import even when reordering": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/cgo_example.go",
 			archive: `
@@ -780,8 +737,7 @@ import "C"
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "try to read from stdin",
+		"try to read from stdin": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    StandardInput,
 			archive: `
@@ -790,8 +746,7 @@ import "C"
 			wantChange: false,
 			wantErr:    true,
 		},
-		{
-			name:        "error with non-existent file",
+		"error with non-existent file": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdatax/does-not-exist.go",
 			archive: `
@@ -801,8 +756,8 @@ import "C"
 			wantErr:    true,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			input, want := parseTestArchive(t, tt.archive)
 
 			// Write input to temp file for normal cases
@@ -839,8 +794,7 @@ import "C"
 }
 
 func TestSourceFile_Fix_WithImportsOrder(t *testing.T) {
-	tests := []struct {
-		name         string
+	tests := map[string]struct {
 		projectName  string
 		filePath     string
 		archive      string
@@ -848,8 +802,7 @@ func TestSourceFile_Fix_WithImportsOrder(t *testing.T) {
 		wantChange   bool
 		wantErr      bool
 	}{
-		{
-			name:        "success with default order",
+		"success with default order": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -885,8 +838,7 @@ import (
 			wantChange:   true,
 			wantErr:      false,
 		},
-		{
-			name:        "success std,general,company,project",
+		"success std,general,company,project": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -922,8 +874,7 @@ import (
 			wantChange:   true,
 			wantErr:      false,
 		},
-		{
-			name:        "linkname blank import stays adjacent to supporting std imports",
+		"linkname blank import stays adjacent to supporting std imports": {
 			projectName: "github.com/gaudiy/gaudiy-go-kit",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -954,8 +905,7 @@ import (
 			wantChange:   false,
 			wantErr:      false,
 		},
-		{
-			name:        "success project,company,general,std",
+		"success project,company,general,std": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -991,8 +941,7 @@ import (
 			wantChange:   true,
 			wantErr:      false,
 		},
-		{
-			name:        "success project,company,general,std,blanked,dotted",
+		"success project,company,general,std,blanked,dotted": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1036,8 +985,7 @@ import (
 			wantChange:   true,
 			wantErr:      false,
 		},
-		{
-			name:        "linkname blank import stays in std group even when blanked group is configured",
+		"linkname blank import stays in std group even when blanked group is configured": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1065,8 +1013,7 @@ import (
 			wantChange:   true,
 			wantErr:      false,
 		},
-		{
-			name:        "alternative linkname blank import marker stays in std group",
+		"alternative linkname blank import marker stays in std group": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1094,8 +1041,7 @@ import (
 			wantChange:   true,
 			wantErr:      false,
 		},
-		{
-			name:        "blank import without linkname marker is routed to blanked group",
+		"blank import without linkname marker is routed to blanked group": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1121,8 +1067,8 @@ import (
 			wantErr:      false,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			input, want := parseTestArchive(t, tt.archive)
 
 			// Write input to temp file
@@ -1161,16 +1107,14 @@ import (
 }
 
 func TestSourceFile_Fix_WithRemoveUnusedImports(t *testing.T) {
-	tests := []struct {
-		name        string
+	tests := map[string]struct {
 		projectName string
 		filePath    string
 		archive     string
 		wantChange  bool
 		wantErr     bool
 	}{
-		{
-			name:        "remove unused import",
+		"remove unused import": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1201,9 +1145,7 @@ func main() {
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "remove unused import with alias",
+		"remove unused import with alias": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1234,9 +1176,7 @@ func main() {
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "use loaded import but not used",
+		"use loaded import but not used": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1269,8 +1209,7 @@ func main() {
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "success with comments before imports",
+		"success with comments before imports": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1307,8 +1246,7 @@ func main() {
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "success without imports",
+		"success without imports": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1352,8 +1290,7 @@ const webDirectory = "web"
 			wantChange: false,
 			wantErr:    false,
 		},
-		{
-			name:        "cleanup empty import block",
+		"cleanup empty import block": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1379,8 +1316,7 @@ func main() {
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "skip blanked and dotted import names",
+		"skip blanked and dotted import names": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1412,9 +1348,7 @@ func main() {
 `,
 			wantChange: true,
 			wantErr:    false,
-		},
-		{
-			name:        `success with "C"`,
+		}, "success with \"C\"": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1462,8 +1396,8 @@ func main() {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			input, want := parseTestArchive(t, tt.archive)
 
 			// Write input to temp file
@@ -1497,19 +1431,16 @@ func main() {
 }
 
 func TestSourceFile_Fix_WithAliasForVersionSuffix(t *testing.T) {
-	tests := []struct {
-		name        string
+	tests := map[string]struct {
 		projectName string
 		filePath    string
 		archive     string
 		wantChange  bool
 		wantErr     bool
-	}{
-		{
-			name:        "success with golang.org/x/tools/go/packages",
-			projectName: "github.com/zchee/goimports-rereviser",
-			filePath:    "./testdata/example.go",
-			archive: `
+	}{"success with golang.org/x/tools/go/packages": {
+		projectName: "github.com/zchee/goimports-rereviser",
+		filePath:    "./testdata/example.go",
+		archive: `
 -- input.go --
 package testdata
 import(
@@ -1537,14 +1468,12 @@ func main() {
 	fmt.Println(pg.In([]string{"test"}))
 }
 `,
-			wantChange: true,
-			wantErr:    false,
-		},
-		{
-			name:        `success with "C"`,
-			projectName: "github.com/zchee/goimports-rereviser",
-			filePath:    "./testdata/example.go",
-			archive: `
+		wantChange: true,
+		wantErr:    false,
+	}, "success with \"C\"": {
+		projectName: "github.com/zchee/goimports-rereviser",
+		filePath:    "./testdata/example.go",
+		archive: `
 -- input.go --
 package testdata
 /*
@@ -1586,13 +1515,12 @@ func main() {
 	fmt.Println(pg.In([]string{"test"}))
 }
 `,
-			wantChange: true,
-			wantErr:    false,
-		},
-	}
+		wantChange: true,
+		wantErr:    false,
+	}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			input, want := parseTestArchive(t, tt.archive)
 
 			// Write input to temp file
@@ -1626,19 +1554,16 @@ func main() {
 }
 
 func TestSourceFile_Fix_WithRemovingUnusedImportsAndAlias(t *testing.T) {
-	tests := []struct {
-		name        string
+	tests := map[string]struct {
 		projectName string
 		filePath    string
 		archive     string
 		wantChange  bool
 		wantErr     bool
-	}{
-		{
-			name:        "removes unused import and sets alias",
-			projectName: "github.com/zchee/goimports-rereviser",
-			filePath:    "./testdata/example.go",
-			archive: `-- input.go --
+	}{"removes unused import and sets alias": {
+		projectName: "github.com/zchee/goimports-rereviser",
+		filePath:    "./testdata/example.go",
+		archive: `-- input.go --
 package testdata
 import(
 	"fmt"
@@ -1662,13 +1587,12 @@ func main() {
 	fmt.Println(aliaspkg.Value())
 }
 `,
-			wantChange: true,
-			wantErr:    false,
-		},
-	}
+		wantChange: true,
+		wantErr:    false,
+	}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			input, want := parseTestArchive(t, tt.archive)
 
 			filePath := tt.filePath
@@ -1707,8 +1631,7 @@ func main() {
 }
 
 func TestSourceFile_Fix_WithLocalPackagePrefixes(t *testing.T) {
-	tests := []struct {
-		name             string
+	tests := map[string]struct {
 		projectName      string
 		filePath         string
 		archive          string
@@ -1716,8 +1639,7 @@ func TestSourceFile_Fix_WithLocalPackagePrefixes(t *testing.T) {
 		wantChange       bool
 		wantErr          bool
 	}{
-		{
-			name:        "group local packages",
+		"group local packages": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1767,8 +1689,7 @@ func main() {
 			wantChange:       true,
 			wantErr:          false,
 		},
-		{
-			name:        "group local packages",
+		"group local packages #2": {
 			projectName: "goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1807,8 +1728,7 @@ func main() {
 			wantChange:       true,
 			wantErr:          false,
 		},
-		{
-			name:        "group local packages separately from project files",
+		"group local packages separately from project files": {
 			projectName: "github.com/zchee/goimports-rereviser/code/thispkg",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1852,8 +1772,7 @@ func main() {
 			wantChange:       true,
 			wantErr:          false,
 		},
-		{
-			name:        "check without local packages",
+		"check without local packages": {
 			projectName: "github.com/zchee/goimports-rereviser/code/thispkg",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1898,8 +1817,8 @@ func main() {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			input, want := parseTestArchive(t, tt.archive)
 
 			// Write input to temp file
@@ -1933,16 +1852,14 @@ func main() {
 }
 
 func TestSourceFile_Fix_WithFormat(t *testing.T) {
-	tests := []struct {
-		name        string
+	tests := map[string]struct {
 		projectName string
 		filePath    string
 		archive     string
 		wantChange  bool
 		wantErr     bool
 	}{
-		{
-			name:        "success",
+		"success": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1974,8 +1891,7 @@ func test1() {}
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "success with comments",
+		"success with comments": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -1998,8 +1914,8 @@ func test1() {}
 			wantErr:    false,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			input, want := parseTestArchive(t, tt.archive)
 
 			// Write input to temp file
@@ -2033,16 +1949,14 @@ func test1() {}
 }
 
 func TestSourceFile_Fix_WithSkipGeneratedFile(t *testing.T) {
-	tests := []struct {
-		name        string
+	tests := map[string]struct {
 		projectName string
 		filePath    string
 		archive     string
 		wantChange  bool
 		wantErr     bool
 	}{
-		{
-			name:        "success with generated file",
+		"success with generated file": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2079,9 +1993,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with generated file",
+		"success with generated file #2": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2119,9 +2031,7 @@ import (
 			wantChange: false,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with generated file",
+		"success with generated file #3": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2159,9 +2069,7 @@ import (
 			wantChange: false,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with generated file",
+		"success with generated file #4": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2209,9 +2117,7 @@ import (
 			wantChange: false,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with generated file",
+		"success with generated file #5": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2258,9 +2164,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with generated file",
+		"success with generated file #6": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2299,9 +2203,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with generated file",
+		"success with generated file #7": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2338,9 +2240,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-
-		{
-			name:        "success with generated file",
+		"success with generated file #8": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2384,8 +2284,8 @@ import (
 			wantErr:    false,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			input, want := parseTestArchive(t, tt.archive)
 
 			// Write input to temp file
@@ -2419,16 +2319,14 @@ import (
 }
 
 func TestSourceFile_Fix_WithSeparatedNamedImports(t *testing.T) {
-	tests := []struct {
-		name        string
+	tests := map[string]struct {
 		projectName string
 		filePath    string
 		archive     string
 		wantChange  bool
 		wantErr     bool
 	}{
-		{
-			name:        "simple",
+		"simple": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2455,8 +2353,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "named",
+		"named": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2492,8 +2389,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "named with comments",
+		"named with comments": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2529,8 +2425,7 @@ import (
 			wantChange: true,
 			wantErr:    false,
 		},
-		{
-			name:        "linkname blank import is not treated as named import",
+		"linkname blank import is not treated as named import": {
 			projectName: "github.com/zchee/goimports-rereviser",
 			filePath:    "./testdata/example.go",
 			archive: `
@@ -2557,8 +2452,8 @@ import (
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			input, want := parseTestArchive(t, tt.archive)
 
 			// Write input to temp file

@@ -9,33 +9,25 @@ import (
 func TestStringToImportsOrder(t *testing.T) {
 	t.Parallel()
 
-	type args struct {
+	tests := map[string]struct {
 		importsOrder string
-	}
-
-	tests := []struct {
-		name    string
-		args    args
-		wantErr string
+		wantErr      string
 	}{
-		{
-			name:    "invalid groupsImports count",
-			args:    args{importsOrder: "std,general"},
-			wantErr: `use default at least 4 parameters to sort groups of your imports: "std,general,company,project"`,
+		"invalid groupsImports count": {
+			importsOrder: "std,general",
+			wantErr:      `use default at least 4 parameters to sort groups of your imports: "std,general,company,project"`,
 		},
-		{
-			name:    "unknown group",
-			args:    args{importsOrder: "std,general,company,group"},
-			wantErr: `unknown order group type: "group"`,
+		"unknown group": {
+			importsOrder: "std,general,company,group",
+			wantErr:      `unknown order group type: "group"`,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := StringToImportsOrders(tt.args.importsOrder)
-
+			got, err := StringToImportsOrders(tt.importsOrder)
 			if got != nil {
 				t.Errorf("expected nil, got: %v", got)
 			}
@@ -75,39 +67,36 @@ func TestStringToImportsOrders_IgnoresDuplicates(t *testing.T) {
 	}
 }
 
-func Test_appendGroups(t *testing.T) {
-	type args struct {
+func TestAppendGroups(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
 		input [][]string
-	}
-	tests := []struct {
-		name string
-		args args
-		want []string
+		want  []string
 	}{
-		{
-			name: "empty",
-			args: args{input: [][]string{}},
-			want: []string{},
+		"empty": {
+			input: [][]string{},
+			want:  []string{},
 		},
-		{
-			name: "single",
-			args: args{input: [][]string{{"a", "b", "c"}}},
-			want: []string{"a", "b", "c"},
+		"single": {
+			input: [][]string{{"a", "b", "c"}},
+			want:  []string{"a", "b", "c"},
 		},
-		{
-			name: "multiple",
-			args: args{input: [][]string{{"a", "b", "c"}, {"d", "e", "f"}}},
-			want: []string{"a", "b", "c", "\n", "\n", "d", "e", "f"},
+		"multiple": {
+			input: [][]string{{"a", "b", "c"}, {"d", "e", "f"}},
+			want:  []string{"a", "b", "c", "\n", "\n", "d", "e", "f"},
 		},
-		{
-			name: "skip-empty",
-			args: args{input: [][]string{{"a", "b", "c"}, {}, {"d", "e", "f"}}},
-			want: []string{"a", "b", "c", "\n", "\n", "d", "e", "f"},
+		"skip-empty": {
+			input: [][]string{{"a", "b", "c"}, {}, {"d", "e", "f"}},
+			want:  []string{"a", "b", "c", "\n", "\n", "d", "e", "f"},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := appendGroups(tt.args.input...)
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got := appendGroups(tt.input...)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("appendGroups() mismatch (-want +got):\n%s", diff)
 			}

@@ -15,28 +15,7 @@ import (
 
 const sep = string(os.PathSeparator)
 
-func TestNewSourceDir(t *testing.T) {
-	t.Run("should generate source dir from recursive path", func(tt *testing.T) {
-		dir := NewSourceDir("project", recursivePath, false, "")
-		if diff := cmp.Diff("project", dir.projectName); diff != "" {
-			tt.Errorf("mismatch (-want +got):\n%s", diff)
-		}
-		if strings.Contains(dir.dir, "/...") {
-			tt.Errorf("expected %q not to contain %q", dir.dir, "/...")
-		}
-		if diff := cmp.Diff(true, dir.isRecursive); diff != "" {
-			tt.Errorf("mismatch (-want +got):\n%s", diff)
-		}
-		if diff := cmp.Diff(0, len(dir.excludePatterns)); diff != "" {
-			tt.Errorf("mismatch (-want +got):\n%s", diff)
-		}
-	})
-}
-
-func TestSourceDir_Fix(t *testing.T) {
-	testFile := "testdata/dir/dir1/file1.go"
-
-	originContent := `package dir1
+const dirFixUnformatted = `package dir1
 import (
 	"strings"
 	"fmt"
@@ -45,266 +24,218 @@ func main() {
 	fmt.Println(strings.ToLower("Hello World!"))
 }
 `
-	exec := func(tt *testing.T, fn func(*testing.T) error) {
-		// create test file
-		if err := os.MkdirAll(filepath.Dir(testFile), os.ModePerm); err != nil {
-			tt.Errorf("unexpected error: %v", err)
-		}
-		if err := os.WriteFile(testFile, []byte(originContent), os.ModePerm); err != nil {
-			tt.Errorf("unexpected error: %v", err)
-		}
 
-		// exec test func
-		if err := fn(tt); err != nil {
-			tt.Errorf("unexpected error: %v", err)
-		}
+const dirFindUnformatted = `package dir1
+import (
+	"strings"
 
-		// remove test directory
-		if err := os.RemoveAll(filepath.Dir(filepath.Dir(testFile))); err != nil {
-			tt.Errorf("unexpected error: %v", err)
-		}
+	"fmt"
+)
+func main() {
+	fmt.Println(strings.ToLower("Hello World!"))
+}
+`
+
+// sortedDirContent computes the canonical sorted form of the unformatted
+// fixture so excludes-tests can assert against it without depending on a
+// shared mutable fixture.
+func sortedDirContent(t *testing.T, projectName, unformatted string) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "file1.go")
+	if err := os.WriteFile(filePath, []byte(unformatted), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
 	}
-	var sortedContent string
-	exec(t, func(tt *testing.T) error {
-		// get sorted content via SourceFile.Fix
-		sortedData, _, changed, err := NewSourceFile("testdata", testFile).Fix()
-		if err != nil {
-			tt.Errorf("unexpected error: %v", err)
-		}
-		sortedContent = string(sortedData)
-		if diff := cmp.Diff(true, changed); diff != "" {
-			tt.Errorf("mismatch (-want +got):\n%s", diff)
-		}
-		if originContent == sortedContent {
-			tt.Errorf("expected content to be different")
-		}
-		return nil
-	})
+	data, _, changed, err := NewSourceFile(projectName, filePath).Fix()
+	if err != nil {
+		t.Fatalf("Fix on fixture: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected fixture to be reformatted")
+	}
+	return string(data)
+}
 
-	type args struct {
-		project  string
-		path     string
+func TestNewSourceDir(t *testing.T) {
+	t.Parallel()
+
+	dir := NewSourceDir("project", recursivePath, false, "")
+	if diff := cmp.Diff("project", dir.projectName); diff != "" {
+		t.Errorf("projectName mismatch (-want +got):\n%s", diff)
+	}
+	if strings.Contains(dir.dir, "/...") {
+		t.Errorf("expected %q not to contain %q", dir.dir, "/...")
+	}
+	if !dir.isRecursive {
+		t.Errorf("expected isRecursive to be true")
+	}
+	if got := len(dir.excludePatterns); got != 0 {
+		t.Errorf("expected no exclude patterns, got %d", got)
+	}
+}
+
+func TestSourceDir_Fix(t *testing.T) {
+	const projectName = "testdata"
+
+	sortedContent := sortedDirContent(t, projectName, dirFixUnformatted)
+
+	tests := map[string]struct {
 		excludes string
-	}
-	tests := []struct {
-		name string
-		args args
-		want string
+		want     string
 	}{
-		{
-			name: "exclude-file",
-			args: args{project: "testdata", path: "testdata/dir", excludes: "dir1" + sep + "file1.go"},
-			want: originContent,
-		}, {
-			name: "exclude-dir",
-			args: args{project: "testdata", path: "testdata/dir", excludes: "dir1" + sep},
-			want: originContent,
-		}, {
-			name: "exclude-file-*",
-			args: args{project: "testdata", path: "testdata/dir", excludes: "dir1" + sep + "f*1.go"},
-			want: originContent,
-		}, {
-			name: "exclude-file-?",
-			args: args{project: "testdata", path: "testdata/dir", excludes: "dir1" + sep + "file?.go"},
-			want: originContent,
-		}, {
-			name: "exclude-file-multi",
-			args: args{project: "testdata", path: "testdata/dir", excludes: "dir1" + sep + "file?.go,aaa,bbb"},
-			want: originContent,
-		}, {
-			name: "not-exclude",
-			args: args{project: "testdata", path: "testdata/dir", excludes: "dir1" + sep + "test.go"},
-			want: sortedContent,
+		"exclude-file": {
+			excludes: "dir1" + sep + "file1.go",
+			want:     dirFixUnformatted,
+		},
+		"exclude-dir": {
+			excludes: "dir1" + sep,
+			want:     dirFixUnformatted,
+		},
+		"exclude-file-*": {
+			excludes: "dir1" + sep + "f*1.go",
+			want:     dirFixUnformatted,
+		},
+		"exclude-file-?": {
+			excludes: "dir1" + sep + "file?.go",
+			want:     dirFixUnformatted,
+		},
+		"exclude-file-multi": {
+			excludes: "dir1" + sep + "file?.go,aaa,bbb",
+			want:     dirFixUnformatted,
+		},
+		"not-exclude": {
+			excludes: "dir1" + sep + "test.go",
+			want:     sortedContent,
 		},
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(tt *testing.T) {
-			exec(tt, func(ttt *testing.T) error {
-				// executing SourceDir.Fix
-				_, err := NewSourceDir(test.args.project, test.args.path, true, test.args.excludes).Fix()
-				if err != nil {
-					tt.Errorf("unexpected error: %v", err)
-				}
-				// read new content
-				content, err := os.ReadFile(testFile)
-				if err != nil {
-					tt.Errorf("unexpected error: %v", err)
-				}
-				if diff := cmp.Diff(test.want, string(content)); diff != "" {
-					tt.Errorf("mismatch (-want +got):\n%s", diff)
-				}
-				return nil
-			})
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rootDir := t.TempDir()
+			pkgDir := filepath.Join(rootDir, "dir1")
+			if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+				t.Fatalf("mkdir pkg: %v", err)
+			}
+			testFile := filepath.Join(pkgDir, "file1.go")
+			if err := os.WriteFile(testFile, []byte(dirFixUnformatted), 0o644); err != nil {
+				t.Fatalf("write fixture: %v", err)
+			}
+
+			if _, err := NewSourceDir(projectName, rootDir, true, tt.excludes).Fix(); err != nil {
+				t.Fatalf("Fix: %v", err)
+			}
+
+			got, err := os.ReadFile(testFile)
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
+			}
+			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }
 
 func TestSourceDir_IsExcluded(t *testing.T) {
-	type args struct {
-		project  string
-		path     string
+	t.Parallel()
+
+	tests := map[string]struct {
 		excludes string
 		testPath string
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
+		want     bool
 	}{
-		{
-			name: "default-vendor-dir",
-			args: args{project: "project", path: "project", excludes: "", testPath: filepath.Join("vendor")},
-			want: true,
+		"default-vendor-dir": {
+			excludes: "",
+			testPath: filepath.Join("vendor"),
+			want:     true,
 		},
-		{
-			name: "default-testdata-dir",
-			args: args{project: "project", path: "project", excludes: "", testPath: filepath.Join("nested", "testdata")},
-			want: true,
+		"default-testdata-dir": {
+			excludes: "",
+			testPath: filepath.Join("nested", "testdata"),
+			want:     true,
 		},
-		{
-			name: "default-dot-file",
-			args: args{project: "project", path: "project", excludes: "", testPath: ".hidden.go"},
-			want: true,
+		"default-dot-file": {
+			excludes: "",
+			testPath: ".hidden.go",
+			want:     true,
 		},
-		{
-			name: "default-underscore-dir",
-			args: args{project: "project", path: "project", excludes: "", testPath: filepath.Join("_tmp")},
-			want: true,
+		"default-underscore-dir": {
+			excludes: "",
+			testPath: filepath.Join("_tmp"),
+			want:     true,
 		},
-		{
-			name: "normal",
-			args: args{project: "project", path: "project", excludes: "test.go", testPath: "test.go"},
-			want: true,
+		"normal": {
+			excludes: "test.go",
+			testPath: "test.go",
+			want:     true,
 		},
-		{
-			name: "dir",
-			args: args{project: "project", path: "project", excludes: "test/", testPath: "test"},
-			want: true,
+		"dir": {
+			excludes: "test/",
+			testPath: "test",
+			want:     true,
 		},
-		{
-			name: "wildcard-1",
-			args: args{project: "project", path: "project", excludes: "tes?.go", testPath: "test.go"},
-			want: true,
+		"wildcard-1": {
+			excludes: "tes?.go",
+			testPath: "test.go",
+			want:     true,
 		},
-		{
-			name: "wildcard-2",
-			args: args{project: "project", path: "project", excludes: "t*.go", testPath: "test.go"},
-			want: true,
+		"wildcard-2": {
+			excludes: "t*.go",
+			testPath: "test.go",
+			want:     true,
 		},
-		{
-			name: "not-excluded",
-			args: args{project: "project", path: "project", excludes: "t*.go", testPath: "abc.go"},
-			want: false,
+		"not-excluded": {
+			excludes: "t*.go",
+			testPath: "abc.go",
+			want:     false,
 		},
-		{
-			name: "multi-excludes",
-			args: args{project: "project", path: "project", excludes: "t*.go,abc.go", testPath: "abc.go"},
-			want: true,
+		"multi-excludes": {
+			excludes: "t*.go,abc.go",
+			testPath: "abc.go",
+			want:     true,
 		},
-		{
-			name: "vendor-go-file-not-excluded",
-			args: args{project: "project", path: "project", excludes: "", testPath: "vendor.go"},
-			want: false,
+		"vendor-go-file-not-excluded": {
+			excludes: "",
+			testPath: "vendor.go",
+			want:     false,
 		},
 	}
 
-	for _, test := range tests {
-		args := test.args
-		t.Run(test.name, func(tt *testing.T) {
-			excluded := NewSourceDir(args.project, args.path, true, args.excludes).isExcluded(args.testPath)
-			if diff := cmp.Diff(test.want, excluded); diff != "" {
-				tt.Errorf("mismatch (-want +got):\n%s", diff)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got := NewSourceDir("project", "project", true, tt.excludes).isExcluded(tt.testPath)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("isExcluded mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
 }
 
 func TestSourceDir_Find(t *testing.T) {
-	testFile := "testdata/dir/dir1/file1.go"
+	t.Parallel()
 
-	originContent := `package dir1
-import (
-	"strings"
+	const projectName = "testdata"
 
-	"fmt"
-)
-func main() {
-	fmt.Println(strings.ToLower("Hello World!"))
-}
-`
-	exec := func(tt *testing.T, fn func(*testing.T) error) {
-		// create test file
-		if err := os.MkdirAll(filepath.Dir(testFile), os.ModePerm); err != nil {
-			tt.Errorf("unexpected error: %v", err)
-		}
-		if err := os.WriteFile(testFile, []byte(originContent), os.ModePerm); err != nil {
-			tt.Errorf("unexpected error: %v", err)
-		}
-
-		// exec test func
-		if err := fn(tt); err != nil {
-			tt.Errorf("unexpected error: %v", err)
-		}
-
-		// remove test file
-		if err := os.RemoveAll(filepath.Dir(filepath.Dir(testFile))); err != nil {
-			tt.Errorf("unexpected error: %v", err)
-		}
+	rootDir := t.TempDir()
+	pkgDir := filepath.Join(rootDir, "dir1")
+	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+		t.Fatalf("mkdir pkg: %v", err)
+	}
+	testFile := filepath.Join(pkgDir, "file1.go")
+	if err := os.WriteFile(testFile, []byte(dirFindUnformatted), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
 	}
 
-	var sortedContent string
-	exec(t, func(tt *testing.T) error {
-		sortedData, _, changed, err := NewSourceFile("testdata", testFile).Fix()
-		if err != nil {
-			tt.Errorf("unexpected error: %v", err)
-		}
-		sortedContent = string(sortedData)
-		if diff := cmp.Diff(true, changed); diff != "" {
-			tt.Errorf("mismatch (-want +got):\n%s", diff)
-		}
-		if originContent == sortedContent {
-			tt.Errorf("expected content to be different")
-		}
-		return nil
-	})
-
-	type args struct {
-		project  string
-		path     string
-		excludes string
+	files, err := NewSourceDir(projectName, rootDir, true, "dir1"+sep+"test.go").Find()
+	if err != nil {
+		t.Fatalf("Find: %v", err)
 	}
-	tests := []struct {
-		name string
-		args args
-		want []string
-	}{
-		{
-			name: "found-unformatted",
-			args: args{project: "testdata", path: "testdata/dir", excludes: "dir1" + sep + "test.go"},
-			want: []string{"testdata/dir/dir1/file1.go"},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(tt *testing.T) {
-			exec(tt, func(ttt *testing.T) error {
-				files, err := NewSourceDir(test.args.project, test.args.path, true, test.args.excludes).Find()
-				if err != nil {
-					tt.Errorf("unexpected error: %v", err)
-				}
-				rootPath, err := os.Getwd()
-				if err != nil {
-					tt.Errorf("unexpected error: %v", err)
-				}
-				var want []string
-				for _, w := range test.want {
-					want = append(want, filepath.Join(rootPath, w))
-				}
-				if diff := cmp.Diff(want, files.List()); diff != "" {
-					tt.Errorf("mismatch (-want +got):\n%s", diff)
-				}
-				return nil
-			})
-		})
+	if diff := cmp.Diff([]string{testFile}, files.List()); diff != "" {
+		t.Errorf("mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -320,7 +251,7 @@ func TestSourceDir_FindWithWorkerPoolWaitsForResults(t *testing.T) {
 	}
 
 	pool := pond.New(1, 0)
-	defer pool.StopAndWait()
+	t.Cleanup(pool.StopAndWait)
 
 	files, err := NewSourceDir(project, tmpDir, true, "").
 		WithWorkerPool(pool).
@@ -432,6 +363,8 @@ func main() {
 }
 
 func TestSourceDir_Fix_ReturnsWriteErrorWithoutCaching(t *testing.T) {
+	t.Parallel()
+
 	project := "github.com/example/project"
 	tmpDir := t.TempDir()
 	cacheDir := t.TempDir()
@@ -481,6 +414,8 @@ func main() {
 }
 
 func TestSourceDirCacheDefaults(t *testing.T) {
+	t.Parallel()
+
 	project := "github.com/zchee/goimports-rereviser/v4"
 	tmpDir := t.TempDir()
 	cacheDir := t.TempDir()
@@ -502,34 +437,24 @@ func TestSourceDirCacheDefaults(t *testing.T) {
 }
 
 func TestUnformattedCollection_List(t *testing.T) {
-	tests := []struct {
-		name    string
-		init    func(t *testing.T) *UnformattedCollection
-		inspect func(r *UnformattedCollection, t *testing.T) // inspects receiver after test run
+	t.Parallel()
 
-		want1 []string
+	tests := map[string]struct {
+		input []string
+		want  []string
 	}{
-		{
-			name: "sucess",
-			init: func(t *testing.T) *UnformattedCollection {
-				return newUnformattedCollection([]string{"1", "2"})
-			},
-			inspect: func(r *UnformattedCollection, t *testing.T) {
-			},
-			want1: []string{"1", "2"},
+		"success": {
+			input: []string{"1", "2"},
+			want:  []string{"1", "2"},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			receiver := tt.init(t)
-			got1 := receiver.List()
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-			if tt.inspect != nil {
-				tt.inspect(receiver, t)
-			}
-
-			if diff := cmp.Diff(tt.want1, got1); diff != "" {
+			got := newUnformattedCollection(tt.input).List()
+			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -537,31 +462,25 @@ func TestUnformattedCollection_List(t *testing.T) {
 }
 
 func TestUnformattedCollection_String(t *testing.T) {
-	tests := []struct {
-		name    string
-		init    func(t *testing.T) *UnformattedCollection
-		inspect func(r *UnformattedCollection, t *testing.T) // inspects receiver after test run
-		want    string
+	t.Parallel()
+
+	tests := map[string]struct {
+		input []string
+		want  string
 	}{
-		{
-			name: "success",
-			init: func(t *testing.T) *UnformattedCollection {
-				return newUnformattedCollection([]string{"1", "2"})
-			},
-			inspect: func(r *UnformattedCollection, t *testing.T) {
-			},
+		"success": {
+			input: []string{"1", "2"},
 			want: `1
 2`,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			receiver := tt.init(t)
-			if tt.inspect != nil {
-				tt.inspect(receiver, t)
-			}
-			if diff := cmp.Diff(tt.want, receiver.String()); diff != "" {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got := newUnformattedCollection(tt.input).String()
+			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})

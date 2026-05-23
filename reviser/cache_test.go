@@ -139,92 +139,82 @@ func TestWriteCacheEntryUsesPrivateAtomicFile(t *testing.T) {
 }
 
 func TestShouldSkipByMetadata(t *testing.T) {
-	t.Run("metadata match skips", func(t *testing.T) {
-		workDir := t.TempDir()
-		cacheDir := t.TempDir()
+	tests := map[string]struct {
+		setup    func(t *testing.T, cacheDir, filePath string)
+		wantSkip bool
+	}{
+		"metadata match skips": {
+			setup: func(t *testing.T, cacheDir, filePath string) {
+				t.Helper()
+				content := []byte("package main\n")
+				if err := os.WriteFile(filePath, content, 0o644); err != nil {
+					t.Fatalf("write file: %v", err)
+				}
+				entry, err := NewCacheEntry(filePath, ComputeContentHash(content), true)
+				if err != nil {
+					t.Fatalf("build cache entry: %v", err)
+				}
+				if err := WriteCacheEntry(cacheDir, filePath, entry); err != nil {
+					t.Fatalf("write cache entry: %v", err)
+				}
+			},
+			wantSkip: true,
+		},
+		"metadata mismatch requires processing": {
+			setup: func(t *testing.T, cacheDir, filePath string) {
+				t.Helper()
+				initial := []byte("package main\n")
+				if err := os.WriteFile(filePath, initial, 0o644); err != nil {
+					t.Fatalf("write file: %v", err)
+				}
+				entry, err := NewCacheEntry(filePath, ComputeContentHash(initial), true)
+				if err != nil {
+					t.Fatalf("build cache entry: %v", err)
+				}
+				if err := WriteCacheEntry(cacheDir, filePath, entry); err != nil {
+					t.Fatalf("write cache entry: %v", err)
+				}
+				time.Sleep(5 * time.Millisecond)
+				updated := []byte("package main\nconst x = 1\n")
+				if err := os.WriteFile(filePath, updated, 0o644); err != nil {
+					t.Fatalf("modify file: %v", err)
+				}
+			},
+			wantSkip: false,
+		},
+		"legacy hash fallback": {
+			setup: func(t *testing.T, cacheDir, filePath string) {
+				t.Helper()
+				content := []byte("package legacy\n")
+				if err := os.WriteFile(filePath, content, 0o644); err != nil {
+					t.Fatalf("write file: %v", err)
+				}
+				legacyCache := CacheFilePath(cacheDir, filePath)
+				if err := os.WriteFile(legacyCache, []byte(ComputeContentHash(content)), 0o644); err != nil {
+					t.Fatalf("write legacy cache: %v", err)
+				}
+			},
+			wantSkip: true,
+		},
+	}
 
-		filePath := filepath.Join(workDir, "main.go")
-		content := []byte("package main\n")
-		if err := os.WriteFile(filePath, content, 0o644); err != nil {
-			t.Fatalf("write file: %v", err)
-		}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			workDir := t.TempDir()
+			cacheDir := t.TempDir()
+			filePath := filepath.Join(workDir, "main.go")
 
-		hash := ComputeContentHash(content)
-		entry, err := NewCacheEntry(filePath, hash, true)
-		if err != nil {
-			t.Fatalf("build cache entry: %v", err)
-		}
-		if err := WriteCacheEntry(cacheDir, filePath, entry); err != nil {
-			t.Fatalf("write cache entry: %v", err)
-		}
+			tt.setup(t, cacheDir, filePath)
 
-		skip, err := ShouldSkipByMetadata(cacheDir, filePath)
-		if err != nil {
-			t.Fatalf("should skip metadata: %v", err)
-		}
-		if !skip {
-			t.Fatalf("expected metadata shortcut to skip processing")
-		}
-	})
-
-	t.Run("metadata mismatch requires processing", func(t *testing.T) {
-		workDir := t.TempDir()
-		cacheDir := t.TempDir()
-
-		filePath := filepath.Join(workDir, "main.go")
-		initial := []byte("package main\n")
-		if err := os.WriteFile(filePath, initial, 0o644); err != nil {
-			t.Fatalf("write file: %v", err)
-		}
-
-		hash := ComputeContentHash(initial)
-		entry, err := NewCacheEntry(filePath, hash, true)
-		if err != nil {
-			t.Fatalf("build cache entry: %v", err)
-		}
-		if err := WriteCacheEntry(cacheDir, filePath, entry); err != nil {
-			t.Fatalf("write cache entry: %v", err)
-		}
-
-		time.Sleep(5 * time.Millisecond)
-		updated := []byte("package main\nconst x = 1\n")
-		if err := os.WriteFile(filePath, updated, 0o644); err != nil {
-			t.Fatalf("modify file: %v", err)
-		}
-
-		skip, err := ShouldSkipByMetadata(cacheDir, filePath)
-		if err != nil {
-			t.Fatalf("should skip metadata: %v", err)
-		}
-		if skip {
-			t.Fatalf("expected metadata mismatch to force processing")
-		}
-	})
-
-	t.Run("legacy hash fallback", func(t *testing.T) {
-		workDir := t.TempDir()
-		cacheDir := t.TempDir()
-
-		filePath := filepath.Join(workDir, "main.go")
-		content := []byte("package legacy\n")
-		if err := os.WriteFile(filePath, content, 0o644); err != nil {
-			t.Fatalf("write file: %v", err)
-		}
-
-		legacyHash := ComputeContentHash(content)
-		legacyCache := CacheFilePath(cacheDir, filePath)
-		if err := os.WriteFile(legacyCache, []byte(legacyHash), 0o644); err != nil {
-			t.Fatalf("write legacy cache: %v", err)
-		}
-
-		skip, err := ShouldSkipByMetadata(cacheDir, filePath)
-		if err != nil {
-			t.Fatalf("should skip metadata: %v", err)
-		}
-		if !skip {
-			t.Fatalf("expected legacy cache to fall back to hash verification")
-		}
-	})
+			skip, err := ShouldSkipByMetadata(cacheDir, filePath)
+			if err != nil {
+				t.Fatalf("ShouldSkipByMetadata: %v", err)
+			}
+			if skip != tt.wantSkip {
+				t.Fatalf("ShouldSkipByMetadata = %v, want %v", skip, tt.wantSkip)
+			}
+		})
+	}
 }
 
 func TestShouldSkipWithFingerprint(t *testing.T) {
@@ -246,20 +236,30 @@ func TestShouldSkipWithFingerprint(t *testing.T) {
 		t.Fatalf("write cache entry: %v", err)
 	}
 
-	skip, err := ShouldSkipWithFingerprint(cacheDir, filePath, true, "fmt-default")
-	if err != nil {
-		t.Fatalf("matching fingerprint skip check: %v", err)
-	}
-	if !skip {
-		t.Fatalf("expected matching formatter fingerprint to allow cache skip")
+	tests := map[string]struct {
+		fingerprint string
+		wantSkip    bool
+	}{
+		"matching fingerprint allows skip": {
+			fingerprint: "fmt-default",
+			wantSkip:    true,
+		},
+		"mismatched fingerprint forces processing": {
+			fingerprint: "separate-named",
+			wantSkip:    false,
+		},
 	}
 
-	skip, err = ShouldSkipWithFingerprint(cacheDir, filePath, true, "separate-named")
-	if err != nil {
-		t.Fatalf("mismatched fingerprint skip check: %v", err)
-	}
-	if skip {
-		t.Fatalf("expected mismatched formatter fingerprint to force processing")
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			skip, err := ShouldSkipWithFingerprint(cacheDir, filePath, true, tt.fingerprint)
+			if err != nil {
+				t.Fatalf("ShouldSkipWithFingerprint(%q): %v", tt.fingerprint, err)
+			}
+			if skip != tt.wantSkip {
+				t.Fatalf("ShouldSkipWithFingerprint(%q) = %v, want %v", tt.fingerprint, skip, tt.wantSkip)
+			}
+		})
 	}
 }
 
@@ -279,20 +279,30 @@ func TestLegacyCacheEntryDoesNotMatchNonEmptyFingerprint(t *testing.T) {
 		t.Fatalf("write legacy cache: %v", err)
 	}
 
-	skip, err := ShouldSkipWithFingerprint(cacheDir, filePath, true, "fmt-default")
-	if err != nil {
-		t.Fatalf("fingerprinted skip check on legacy cache: %v", err)
-	}
-	if skip {
-		t.Fatalf("expected legacy cache without formatter fingerprint to miss non-empty fingerprint")
+	tests := map[string]struct {
+		fingerprint string
+		wantSkip    bool
+	}{
+		"non-empty fingerprint misses legacy cache": {
+			fingerprint: "fmt-default",
+			wantSkip:    false,
+		},
+		"empty fingerprint preserves legacy behavior": {
+			fingerprint: "",
+			wantSkip:    true,
+		},
 	}
 
-	skip, err = ShouldSkipWithFingerprint(cacheDir, filePath, true, "")
-	if err != nil {
-		t.Fatalf("legacy-compatible skip check: %v", err)
-	}
-	if !skip {
-		t.Fatalf("expected empty fingerprint to preserve legacy cache behavior")
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			skip, err := ShouldSkipWithFingerprint(cacheDir, filePath, true, tt.fingerprint)
+			if err != nil {
+				t.Fatalf("ShouldSkipWithFingerprint(%q): %v", tt.fingerprint, err)
+			}
+			if skip != tt.wantSkip {
+				t.Fatalf("ShouldSkipWithFingerprint(%q) = %v, want %v", tt.fingerprint, skip, tt.wantSkip)
+			}
+		})
 	}
 }
 
