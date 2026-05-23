@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"golang.org/x/tools/txtar"
 )
 
@@ -40,6 +41,55 @@ func parseTestArchive(t *testing.T, archive string) (input, want []byte) {
 		t.Fatal("txtar archive must contain input.go")
 	}
 	return input, want
+}
+
+// runFixCase executes a SourceFile.Fix table case end-to-end: parse the
+// txtar archive, materialize the fixture at filePath (unless filePath is
+// the standard-input sentinel or a does-not-exist path), invoke Fix with
+// the given options, and assert wantErr/wantChange/output against the
+// archive's want.go section.
+//
+// filePath semantics:
+//   - StandardInput or a path containing "does-not-exist": no file is
+//     written; the path is passed through to Fix unchanged so the
+//     stdin/missing-file branches inside Fix run.
+//   - any other value: the input is written verbatim to that path.
+//     Callers that want isolation should pass a t.TempDir()-rooted path.
+func runFixCase(
+	t *testing.T,
+	projectName, filePath, archive string,
+	wantChange, wantErr bool,
+	opts ...SourceFileOption,
+) {
+	t.Helper()
+
+	input, want := parseTestArchive(t, archive)
+
+	if filePath != StandardInput && !strings.Contains(filePath, "does-not-exist") {
+		if err := os.WriteFile(filePath, input, 0o644); err != nil {
+			t.Fatalf("failed to write test file: %v", err)
+		}
+	}
+
+	got, _, hasChange, err := NewSourceFile(projectName, filePath).Fix(opts...)
+
+	if wantErr {
+		if err == nil {
+			t.Error("expected error but got none")
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hasChange != wantChange {
+		t.Errorf("hasChange = %v, want %v\ninput len=%d, got len=%d, want len=%d", hasChange, wantChange, len(input), len(got), len(want))
+	}
+	if want != nil {
+		if diff := cmp.Diff(string(want), string(got)); diff != "" {
+			t.Errorf("output mismatch (-want +got):\n%s", diff)
+		}
+	}
 }
 
 func TestIsLinknameBlankImport(t *testing.T) {
@@ -768,37 +818,7 @@ import "C"
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			input, want := parseTestArchive(t, tt.archive)
-
-			// Write input to temp file for normal cases
-			filePath := tt.filePath
-			if filePath != StandardInput && !strings.Contains(filePath, "does-not-exist") {
-				filePath = testFilePath
-				if err := os.WriteFile(filePath, input, 0o644); err != nil {
-					t.Fatalf("failed to write test file: %v", err)
-				}
-			}
-
-			got, _, hasChange, err := NewSourceFile(tt.projectName, filePath).Fix()
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if hasChange != tt.wantChange {
-				t.Errorf("hasChange = %v, want %v\ninput len=%d, got len=%d, want len=%d", hasChange, tt.wantChange, len(input), len(got), len(want))
-			}
-
-			if want != nil && string(got) != string(want) {
-				t.Errorf("output mismatch:\ngot:\n%s\n\nwant:\n%s", got, want)
-			}
+			runFixCase(t, tt.projectName, tt.filePath, tt.archive, tt.wantChange, tt.wantErr)
 		})
 	}
 }
@@ -1079,39 +1099,11 @@ import (
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			input, want := parseTestArchive(t, tt.archive)
-
-			// Write input to temp file
-			filePath := testFilePath
-			if err := os.WriteFile(filePath, input, 0o644); err != nil {
-				t.Fatalf("failed to write test file: %v", err)
-			}
-
 			order, err := StringToImportsOrders(tt.importsOrder)
 			if err != nil {
 				t.Fatalf("failed to parse imports order: %v", err)
 			}
-
-			got, _, hasChange, err := NewSourceFile(tt.projectName, filePath).Fix(WithImportsOrder(order))
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if hasChange != tt.wantChange {
-				t.Errorf("hasChange = %v, want %v", hasChange, tt.wantChange)
-			}
-
-			if want != nil && string(got) != string(want) {
-				t.Errorf("output mismatch:\ngot:\n%s\n\nwant:\n%s", got, want)
-			}
+			runFixCase(t, tt.projectName, testFilePath, tt.archive, tt.wantChange, tt.wantErr, WithImportsOrder(order))
 		})
 	}
 }
@@ -1408,34 +1400,7 @@ func main() {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			input, want := parseTestArchive(t, tt.archive)
-
-			// Write input to temp file
-			filePath := testFilePath
-			if err := os.WriteFile(filePath, input, 0o644); err != nil {
-				t.Fatalf("failed to write test file: %v", err)
-			}
-
-			got, _, hasChange, err := NewSourceFile(tt.projectName, filePath).Fix(WithRemovingUnusedImports)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if hasChange != tt.wantChange {
-				t.Errorf("hasChange = %v, want %v", hasChange, tt.wantChange)
-			}
-
-			if want != nil && string(got) != string(want) {
-				t.Errorf("output mismatch:\ngot:\n%s\n\nwant:\n%s", got, want)
-			}
+			runFixCase(t, tt.projectName, testFilePath, tt.archive, tt.wantChange, tt.wantErr, WithRemovingUnusedImports)
 		})
 	}
 }
@@ -1531,34 +1496,7 @@ func main() {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			input, want := parseTestArchive(t, tt.archive)
-
-			// Write input to temp file
-			filePath := testFilePath
-			if err := os.WriteFile(filePath, input, 0o644); err != nil {
-				t.Fatalf("failed to write test file: %v", err)
-			}
-
-			got, _, hasChange, err := NewSourceFile(tt.projectName, filePath).Fix(WithUsingAliasForVersionSuffix)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if hasChange != tt.wantChange {
-				t.Errorf("hasChange = %v, want %v", hasChange, tt.wantChange)
-			}
-
-			if want != nil && string(got) != string(want) {
-				t.Errorf("output mismatch:\ngot:\n%s\n\nwant:\n%s", got, want)
-			}
+			runFixCase(t, tt.projectName, testFilePath, tt.archive, tt.wantChange, tt.wantErr, WithUsingAliasForVersionSuffix)
 		})
 	}
 }
@@ -1603,39 +1541,12 @@ func main() {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			input, want := parseTestArchive(t, tt.archive)
-
-			filePath := tt.filePath
-			if err := os.WriteFile(filePath, input, 0o644); err != nil {
-				t.Fatalf("failed to write test file: %v", err)
-			}
-			t.Cleanup(func() {
-				_ = os.Remove(filePath)
-			})
-
-			got, _, hasChange, err := NewSourceFile(tt.projectName, filePath).Fix(
+			t.Cleanup(func() { _ = os.Remove(tt.filePath) })
+			runFixCase(
+				t, tt.projectName, tt.filePath, tt.archive, tt.wantChange, tt.wantErr,
 				WithRemovingUnusedImports,
 				WithUsingAliasForVersionSuffix,
 			)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if hasChange != tt.wantChange {
-				t.Errorf("hasChange = %v, want %v", hasChange, tt.wantChange)
-			}
-
-			if want != nil && string(got) != string(want) {
-				t.Errorf("output mismatch:\ngot:\n%s\n\nwant:\n%s", got, want)
-			}
 		})
 	}
 }
@@ -1829,34 +1740,7 @@ func main() {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			input, want := parseTestArchive(t, tt.archive)
-
-			// Write input to temp file
-			filePath := testFilePath
-			if err := os.WriteFile(filePath, input, 0o644); err != nil {
-				t.Fatalf("failed to write test file: %v", err)
-			}
-
-			got, _, hasChange, err := NewSourceFile(tt.projectName, filePath).Fix(WithCompanyPackagePrefixes(tt.localPkgPrefixes))
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if hasChange != tt.wantChange {
-				t.Errorf("hasChange = %v, want %v", hasChange, tt.wantChange)
-			}
-
-			if want != nil && string(got) != string(want) {
-				t.Errorf("output mismatch:\ngot:\n%s\n\nwant:\n%s", got, want)
-			}
+			runFixCase(t, tt.projectName, testFilePath, tt.archive, tt.wantChange, tt.wantErr, WithCompanyPackagePrefixes(tt.localPkgPrefixes))
 		})
 	}
 }
@@ -1926,34 +1810,7 @@ func test1() {}
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			input, want := parseTestArchive(t, tt.archive)
-
-			// Write input to temp file
-			filePath := testFilePath
-			if err := os.WriteFile(filePath, input, 0o644); err != nil {
-				t.Fatalf("failed to write test file: %v", err)
-			}
-
-			got, _, hasChange, err := NewSourceFile(tt.projectName, filePath).Fix(WithCodeFormatting)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if hasChange != tt.wantChange {
-				t.Errorf("hasChange = %v, want %v", hasChange, tt.wantChange)
-			}
-
-			if want != nil && string(got) != string(want) {
-				t.Errorf("output mismatch:\ngot:\n%s\n\nwant:\n%s", got, want)
-			}
+			runFixCase(t, tt.projectName, testFilePath, tt.archive, tt.wantChange, tt.wantErr, WithCodeFormatting)
 		})
 	}
 }
@@ -2296,34 +2153,7 @@ import (
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			input, want := parseTestArchive(t, tt.archive)
-
-			// Write input to temp file
-			filePath := testFilePath
-			if err := os.WriteFile(filePath, input, 0o644); err != nil {
-				t.Fatalf("failed to write test file: %v", err)
-			}
-
-			got, _, hasChange, err := NewSourceFile(tt.projectName, filePath).Fix(WithSkipGeneratedFile)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if hasChange != tt.wantChange {
-				t.Errorf("hasChange = %v, want %v", hasChange, tt.wantChange)
-			}
-
-			if want != nil && string(got) != string(want) {
-				t.Errorf("output mismatch:\ngot:\n%s\n\nwant:\n%s", got, want)
-			}
+			runFixCase(t, tt.projectName, testFilePath, tt.archive, tt.wantChange, tt.wantErr, WithSkipGeneratedFile)
 		})
 	}
 }
@@ -2464,34 +2294,8 @@ import (
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			input, want := parseTestArchive(t, tt.archive)
-
-			// Write input to temp file
 			filePath := filepath.Join(t.TempDir(), "example.go")
-			if err := os.WriteFile(filePath, input, 0o644); err != nil {
-				t.Fatalf("failed to write test file: %v", err)
-			}
-
-			got, _, hasChange, err := NewSourceFile(tt.projectName, filePath).Fix(WithSeparatedNamedImports)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if hasChange != tt.wantChange {
-				t.Errorf("hasChange = %v, want %v", hasChange, tt.wantChange)
-			}
-
-			if want != nil && string(got) != string(want) {
-				t.Errorf("output mismatch:\ngot:\n%s\n\nwant:\n%s", got, want)
-			}
+			runFixCase(t, tt.projectName, filePath, tt.archive, tt.wantChange, tt.wantErr, WithSeparatedNamedImports)
 		})
 	}
 }
