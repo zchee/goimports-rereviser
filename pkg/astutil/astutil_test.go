@@ -14,21 +14,14 @@ import (
 func TestUsesImport(t *testing.T) {
 	t.Parallel()
 
-	type args struct {
+	tests := map[string]struct {
 		fileData       string
 		path           string
 		packageImports map[string]string
-	}
-
-	tests := []struct {
-		name string
-		args args
-		want bool
+		want           bool
 	}{
-		{
-			name: "success with github.com/go-pg/pg/v9",
-			args: args{
-				fileData: `package main
+		"success with github.com/go-pg/pg/v9": {
+			fileData: `package main
 import(
 	"fmt"
 	"github.com/go-pg/pg/v9"
@@ -40,17 +33,14 @@ func main(){
 	fmt.Println(pg.In([]string{"test"}))
 }
 `,
-				path: "github.com/go-pg/pg/v9",
-				packageImports: map[string]string{
-					"github.com/go-pg/pg/v9": "pg",
-				},
+			path: "github.com/go-pg/pg/v9",
+			packageImports: map[string]string{
+				"github.com/go-pg/pg/v9": "pg",
 			},
 			want: true,
 		},
-		{
-			name: `success with "pg2 github.com/go-pg/pg/v9"`,
-			args: args{
-				fileData: `package main
+		`success with "pg2 github.com/go-pg/pg/v9"`: {
+			fileData: `package main
 import(
 	"fmt"
 	pg2 "github.com/go-pg/pg/v9"
@@ -62,14 +52,11 @@ func main(){
 	fmt.Println(pg2.In([]string{"test"}))
 }
 `,
-				path: "github.com/go-pg/pg/v9",
-			},
+			path: "github.com/go-pg/pg/v9",
 			want: true,
 		},
-		{
-			name: "success with strconv",
-			args: args{
-				fileData: `package main
+		"success with strconv": {
+			fileData: `package main
 import(
 	"fmt"
 	"github.com/go-pg/pg/v9"
@@ -81,17 +68,14 @@ func main(){
 	fmt.Println(pg.In([]string{"test"}))
 }
 `,
-				path: "strconv",
-				packageImports: map[string]string{
-					"strconv": "strconv",
-				},
+			path: "strconv",
+			packageImports: map[string]string{
+				"strconv": "strconv",
 			},
 			want: true,
 		},
-		{
-			name: "success without ast",
-			args: args{
-				fileData: `package main
+		"success without ast": {
+			fileData: `package main
 import(
 	"fmt"
 	"github.com/go-pg/pg/v9"
@@ -103,14 +87,11 @@ func main(){
 	fmt.Println(pg.In([]string{"test"}))
 }
 `,
-				path: "ast",
-			},
+			path: "ast",
 			want: false,
 		},
-		{
-			name: "success with github.com/zchee/goimports-rereviser/testdata/innderpkg",
-			args: args{
-				fileData: `package main
+		"success with github.com/zchee/goimports-rereviser/testdata/innderpkg": {
+			fileData: `package main
 import(
 	"fmt"
 	"github.com/zchee/goimports-rereviser/testdata/innderpkg"
@@ -122,17 +103,14 @@ func main(){
 	fmt.Println(innderpkg.Something())
 }
 `,
-				path: "github.com/zchee/goimports-rereviser/testdata/innderpkg",
-				packageImports: map[string]string{
-					"github.com/zchee/goimports-rereviser/testdata/innderpkg": "innderpkg",
-				},
+			path: "github.com/zchee/goimports-rereviser/testdata/innderpkg",
+			packageImports: map[string]string{
+				"github.com/zchee/goimports-rereviser/testdata/innderpkg": "innderpkg",
 			},
 			want: true,
 		},
-		{
-			name: "success with unused strconv",
-			args: args{
-				fileData: `package main
+		"success with unused strconv": {
+			fileData: `package main
 import(
 	"fmt"
 	"github.com/zchee/goimports-rereviser/testdata/innderpkg"
@@ -143,24 +121,22 @@ func main(){
 	fmt.Println(innderpkg.Something())
 }
 `,
-				path: "strconv",
-			},
+			path: "strconv",
 			want: false,
 		},
 	}
-	for _, tt := range tests {
-		fileData := tt.args.fileData
 
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			fset := token.NewFileSet()
-			f, err := parser.ParseFile(fset, "", []byte(fileData), parser.ParseComments)
+			f, err := parser.ParseFile(fset, "", []byte(tt.fileData), parser.ParseComments)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			got := UsesImport(f, tt.args.packageImports, tt.args.path)
+			got := UsesImport(f, tt.packageImports, tt.path)
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
@@ -172,20 +148,13 @@ func main(){
 func TestUsedImports(t *testing.T) {
 	t.Parallel()
 
-	type args struct {
+	tests := map[string]struct {
 		fileData       string
 		packageImports map[string]string
-	}
-
-	tests := []struct {
-		name string
-		args args
-		want map[string]bool
+		want           map[string]bool
 	}{
-		{
-			name: "reports used and unused imports",
-			args: args{
-				fileData: `package main
+		"reports used and unused imports": {
+			fileData: `package main
 import(
 	"fmt"
 	"github.com/go-pg/pg/v9"
@@ -196,11 +165,10 @@ func main(){
 	fmt.Println(pg.In([]string{"test"}))
 }
 `,
-				packageImports: map[string]string{
-					"fmt":                    "fmt",
-					"strconv":                "strconv",
-					"github.com/go-pg/pg/v9": "pg",
-				},
+			packageImports: map[string]string{
+				"fmt":                    "fmt",
+				"strconv":                "strconv",
+				"github.com/go-pg/pg/v9": "pg",
 			},
 			want: map[string]bool{
 				"fmt":                    true,
@@ -208,10 +176,8 @@ func main(){
 				"strconv":                false,
 			},
 		},
-		{
-			name: "respects explicit alias",
-			args: args{
-				fileData: `package main
+		"respects explicit alias": {
+			fileData: `package main
 import(
 	pg2 "github.com/go-pg/pg/v9"
 )
@@ -220,18 +186,15 @@ func main(){
 	_ = pg2.In([]string{"test"})
 }
 `,
-				packageImports: map[string]string{
-					"github.com/go-pg/pg/v9": "pg",
-				},
+			packageImports: map[string]string{
+				"github.com/go-pg/pg/v9": "pg",
 			},
 			want: map[string]bool{
 				"github.com/go-pg/pg/v9": true,
 			},
 		},
-		{
-			name: "marks blank and dot imports as used",
-			args: args{
-				fileData: `package main
+		"marks blank and dot imports as used": {
+			fileData: `package main
 import(
 	_ "github.com/go-pg/pg/v9"
 	. "fmt"
@@ -241,10 +204,9 @@ func main(){
 	Println("ok")
 }
 `,
-				packageImports: map[string]string{
-					"fmt":                    "fmt",
-					"github.com/go-pg/pg/v9": "pg",
-				},
+			packageImports: map[string]string{
+				"fmt":                    "fmt",
+				"github.com/go-pg/pg/v9": "pg",
 			},
 			want: map[string]bool{
 				"github.com/go-pg/pg/v9": true,
@@ -253,17 +215,17 @@ func main(){
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			fset := token.NewFileSet()
-			f, err := parser.ParseFile(fset, "", []byte(tt.args.fileData), parser.ParseComments)
+			f, err := parser.ParseFile(fset, "", []byte(tt.fileData), parser.ParseComments)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			got := UsedImports(f, tt.args.packageImports)
+			got := UsedImports(f, tt.packageImports)
 			for path, wantUsed := range tt.want {
 				gotUsed, ok := got[path]
 				if wantUsed {
@@ -281,48 +243,35 @@ func main(){
 }
 
 func TestLoadPackageDeps(t *testing.T) {
-	type args struct {
+	tests := map[string]struct {
 		dir      string
 		filename string
-	}
-
-	tests := []struct {
-		name    string
-		args    args
-		want    map[string]string
-		wantErr bool
+		want     map[string]string
+		wantErr  bool
 	}{
-		{
-			name: "success",
-			args: args{
-				dir:      "./testdata/",
-				filename: "testdata.go",
-			},
+		"success": {
+			dir:      "./testdata/",
+			filename: "testdata.go",
 			want: map[string]string{
 				"fmt":                     "fmt",
 				"golang.org/x/exp/slices": "slices",
 			},
-			wantErr: false,
 		},
-		{
-			name: "success with deprecated build tag",
-			args: args{
-				dir:      "./testdata/",
-				filename: "testdata_with_deprecated_build_tag.go",
-			},
+		"success with deprecated build tag": {
+			dir:      "./testdata/",
+			filename: "testdata_with_deprecated_build_tag.go",
 			want: map[string]string{
 				"fmt":                     "fmt",
 				"golang.org/x/exp/slices": "slices",
 			},
-			wantErr: false,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			f, err := parser.ParseFile(
 				token.NewFileSet(),
-				fmt.Sprintf("%s/%s", tt.args.dir, tt.args.filename),
+				fmt.Sprintf("%s/%s", tt.dir, tt.filename),
 				nil,
 				parser.ParseComments,
 			)
@@ -330,7 +279,7 @@ func TestLoadPackageDeps(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			got, err := LoadPackageDependencies(tt.args.dir, ParseBuildTag(f))
+			got, err := LoadPackageDependencies(tt.dir, ParseBuildTag(f))
 			if tt.wantErr {
 				if err == nil {
 					t.Error("expected error, got nil")
@@ -349,12 +298,10 @@ func TestLoadPackageDeps(t *testing.T) {
 }
 
 func TestLoadPackageDependenciesSingleflight(t *testing.T) {
-	t.Parallel()
-
 	ClearPackageDepsCache()
 
 	originalLoader := loadPackageDependenciesFunc
-	defer func() { loadPackageDependenciesFunc = originalLoader }()
+	t.Cleanup(func() { loadPackageDependenciesFunc = originalLoader })
 
 	var callCount atomic.Int32
 	ready := make(chan struct{})
@@ -401,7 +348,6 @@ func TestLoadPackageDependenciesSingleflight(t *testing.T) {
 		t.Fatalf("expected single loader invocation, got %d", got)
 	}
 
-	// Ensure cached result is reused without invoking loader again.
 	loadPackageDependenciesFunc = func(dir, buildTag string) (PackageImports, error) {
 		callCount.Add(1)
 		return nil, fmt.Errorf("unexpected loader invocation")
