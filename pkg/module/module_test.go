@@ -66,13 +66,12 @@ func TestGoModRootPathAndName(t *testing.T) {
 func TestName(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name      string
-		prepareFn func() string
+	tests := map[string]struct {
+		prepareFn func(t *testing.T) string
 	}{
-		{
-			name: "read empty go.mod",
-			prepareFn: func() string {
+		"read empty go.mod": {
+			prepareFn: func(t *testing.T) string {
+				t.Helper()
 				dir := t.TempDir()
 				f, err := os.Create(filepath.Join(dir, "go.mod"))
 				if err != nil {
@@ -84,16 +83,15 @@ func TestName(t *testing.T) {
 				return dir
 			},
 		},
-		{
-			name: "check failed parsing of go.mod",
-			prepareFn: func() string {
+		"check failed parsing of go.mod": {
+			prepareFn: func(t *testing.T) string {
+				t.Helper()
 				dir := t.TempDir()
 				file, err := os.Create(filepath.Join(dir, "go.mod"))
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
-				_, err = file.WriteString("mod test")
-				if err != nil {
+				if _, err := file.WriteString("mod test"); err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
 				if err := file.Close(); err != nil {
@@ -103,12 +101,12 @@ func TestName(t *testing.T) {
 			},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			goModRootPath := tt.prepareFn()
-			got, err := Name(goModRootPath)
+			got, err := Name(tt.prepareFn(t))
 			if err == nil {
 				t.Error("expected error, got nil")
 			}
@@ -122,44 +120,32 @@ func TestName(t *testing.T) {
 func TestDetermineProjectName(t *testing.T) {
 	t.Parallel()
 
-	type args struct {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tests := map[string]struct {
 		projectName string
 		filePath    string
-	}
-	tests := []struct {
-		name string
-		args args
-		want string
+		want        string
 	}{
-		{
-			name: "success with auto determining",
-			args: args{
-				projectName: "",
-				filePath: func() string {
-					dir, err := os.Getwd()
-					if err != nil {
-						t.Fatalf("unexpected error: %v", err)
-					}
-					return filepath.Join(dir, "module.go")
-				}(),
-			},
-			want: "github.com/zchee/goimports-rereviser/v4",
+		"success with auto determining": {
+			projectName: "",
+			filePath:    filepath.Join(wd, "module.go"),
+			want:        "github.com/zchee/goimports-rereviser/v4",
 		},
-
-		{
-			name: "success with manual set",
-			args: args{
-				projectName: "github.com/zchee/goimports-rereviser/v4",
-				filePath:    "",
-			},
-			want: "github.com/zchee/goimports-rereviser/v4",
+		"success with manual set": {
+			projectName: "github.com/zchee/goimports-rereviser/v4",
+			filePath:    "",
+			want:        "github.com/zchee/goimports-rereviser/v4",
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := DetermineProjectName(tt.args.projectName, tt.args.filePath)
+			got, err := DetermineProjectName(tt.projectName, tt.filePath)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

@@ -9,21 +9,20 @@ import (
 func TestPathIsNotSetError_Error(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name string
+	tests := map[string]struct {
 		want string
 	}{
-		{
-			name: "success",
+		"success": {
 			want: "path is not set",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			e := &PathIsNotSetError{}
-			got := e.Error()
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if diff := cmp.Diff(tt.want, e.Error()); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -33,20 +32,20 @@ func TestPathIsNotSetError_Error(t *testing.T) {
 func TestUndefinedModuleError_Error(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name string
+	tests := map[string]struct {
 		want string
 	}{
-		{
-			name: "success",
+		"success": {
 			want: "module is undefined",
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			e := &UndefinedModuleError{}
-			got := e.Error()
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if diff := cmp.Diff(tt.want, e.Error()); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
