@@ -3,7 +3,7 @@ package module
 import (
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
+	gocmp "github.com/google/go-cmp/cmp"
 )
 
 func TestPathIsNotSetError_Error(t *testing.T) {
@@ -22,7 +22,7 @@ func TestPathIsNotSetError_Error(t *testing.T) {
 			t.Parallel()
 
 			e := &PathIsNotSetError{}
-			if diff := cmp.Diff(tt.want, e.Error()); diff != "" {
+			if diff := gocmp.Diff(tt.want, e.Error()); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -45,7 +45,7 @@ func TestUndefinedModuleError_Error(t *testing.T) {
 			t.Parallel()
 
 			e := &UndefinedModuleError{}
-			if diff := cmp.Diff(tt.want, e.Error()); diff != "" {
+			if diff := gocmp.Diff(tt.want, e.Error()); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})

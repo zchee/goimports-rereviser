@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
+	gocmp "github.com/google/go-cmp/cmp"
 )
 
 func TestGoModRootPathAndName(t *testing.T) {
@@ -28,7 +28,7 @@ func TestGoModRootPathAndName(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if diff := cmp.Diff("github.com/zchee/goimports-rereviser/v4", got); diff != "" {
+		if diff := gocmp.Diff("github.com/zchee/goimports-rereviser/v4", got); diff != "" {
 			t.Errorf("mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -149,7 +149,7 @@ func TestDetermineProjectName(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if diff := gocmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})

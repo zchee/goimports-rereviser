@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
+	gocmp "github.com/google/go-cmp/cmp"
 	"golang.org/x/tools/txtar"
 )
 
@@ -55,12 +55,7 @@ func parseTestArchive(t *testing.T, archive string) (input, want []byte) {
 //     stdin/missing-file branches inside Fix run.
 //   - any other value: the input is written verbatim to that path.
 //     Callers that want isolation should pass a t.TempDir()-rooted path.
-func runFixCase(
-	t *testing.T,
-	projectName, filePath, archive string,
-	wantChange, wantErr bool,
-	opts ...SourceFileOption,
-) {
+func runFixCase(t *testing.T, projectName, filePath, archive string, wantChange, wantErr bool, opts ...SourceFileOption) {
 	t.Helper()
 
 	input, want := parseTestArchive(t, archive)
@@ -86,7 +81,7 @@ func runFixCase(
 		t.Errorf("hasChange = %v, want %v\ninput len=%d, got len=%d, want len=%d", hasChange, wantChange, len(input), len(got), len(want))
 	}
 	if want != nil {
-		if diff := cmp.Diff(string(want), string(got)); diff != "" {
+		if diff := gocmp.Diff(string(want), string(got)); diff != "" {
 			t.Errorf("output mismatch (-want +got):\n%s", diff)
 		}
 	}

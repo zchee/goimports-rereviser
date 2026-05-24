@@ -3,7 +3,7 @@ package reviser
 import (
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
+	gocmp "github.com/google/go-cmp/cmp"
 )
 
 func TestStringToImportsOrder(t *testing.T) {
@@ -43,7 +43,7 @@ func TestUnique_Deduplicates(t *testing.T) {
 
 	got := unique([]string{"a", "a", "b", "a", "c", "b"})
 	want := []string{"a", "b", "c"}
-	if diff := cmp.Diff(want, got); diff != "" {
+	if diff := gocmp.Diff(want, got); diff != "" {
 		t.Errorf("unique mismatch (-want +got):\n%s", diff)
 	}
 }
@@ -59,7 +59,7 @@ func TestStringToImportsOrders_IgnoresDuplicates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error from unique input: %v", err)
 	}
-	if diff := cmp.Diff(gotUniq, gotDup); diff != "" {
+	if diff := gocmp.Diff(gotUniq, gotDup); diff != "" {
 		t.Errorf("expected duplicated input to produce same order as unique input (-want +got):\n%s", diff)
 	}
 	if len(gotDup) != 4 {
@@ -97,7 +97,7 @@ func TestAppendGroups(t *testing.T) {
 			t.Parallel()
 
 			got := appendGroups(tt.input...)
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if diff := gocmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("appendGroups() mismatch (-want +got):\n%s", diff)
 			}
 		})

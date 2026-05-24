@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/alitto/pond"
-	"github.com/google/go-cmp/cmp"
+	gocmp "github.com/google/go-cmp/cmp"
 )
 
 const sep = string(os.PathSeparator)
@@ -60,7 +60,7 @@ func TestNewSourceDir(t *testing.T) {
 	t.Parallel()
 
 	dir := NewSourceDir("project", recursivePath, false, "")
-	if diff := cmp.Diff("project", dir.projectName); diff != "" {
+	if diff := gocmp.Diff("project", dir.projectName); diff != "" {
 		t.Errorf("projectName mismatch (-want +got):\n%s", diff)
 	}
 	if strings.Contains(dir.dir, "/...") {
@@ -131,7 +131,7 @@ func TestSourceDir_Fix(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read fixture: %v", err)
 			}
-			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
+			if diff := gocmp.Diff(tt.want, string(got)); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -208,7 +208,7 @@ func TestSourceDir_IsExcluded(t *testing.T) {
 			t.Parallel()
 
 			got := NewSourceDir("project", "project", true, tt.excludes).isExcluded(tt.testPath)
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if diff := gocmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("isExcluded mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -234,7 +234,7 @@ func TestSourceDir_Find(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Find: %v", err)
 	}
-	if diff := cmp.Diff([]string{testFile}, files.List()); diff != "" {
+	if diff := gocmp.Diff([]string{testFile}, files.List()); diff != "" {
 		t.Errorf("mismatch (-want +got):\n%s", diff)
 	}
 }
@@ -262,7 +262,7 @@ func TestSourceDir_FindWithWorkerPoolWaitsForResults(t *testing.T) {
 	if files == nil {
 		t.Fatalf("expected Find to report the unformatted file")
 	}
-	if diff := cmp.Diff([]string{filePath}, files.List()); diff != "" {
+	if diff := gocmp.Diff([]string{filePath}, files.List()); diff != "" {
 		t.Fatalf("unformatted files mismatch (-want +got):\n%s", diff)
 	}
 }
@@ -301,7 +301,7 @@ func TestSourceDir_FindDoesNotWriteCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read fixture after Find: %v", err)
 	}
-	if diff := cmp.Diff(string(unformatted), string(content)); diff != "" {
+	if diff := gocmp.Diff(string(unformatted), string(content)); diff != "" {
 		t.Fatalf("Find should not mutate files (-want +got):\n%s", diff)
 	}
 }
@@ -454,7 +454,7 @@ func TestUnformattedCollection_List(t *testing.T) {
 			t.Parallel()
 
 			got := newUnformattedCollection(tt.input).List()
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if diff := gocmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -480,7 +480,7 @@ func TestUnformattedCollection_String(t *testing.T) {
 			t.Parallel()
 
 			got := newUnformattedCollection(tt.input).String()
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if diff := gocmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})

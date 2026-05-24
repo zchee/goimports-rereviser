@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
+	gocmp "github.com/google/go-cmp/cmp"
 )
 
 func TestUsesImport(t *testing.T) {
@@ -138,7 +138,7 @@ func main(){
 
 			got := UsesImport(f, tt.packageImports, tt.path)
 
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if diff := gocmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -290,7 +290,7 @@ func TestLoadPackageDeps(t *testing.T) {
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
-			if diff := cmp.Diff(tt.want, map[string]string(got)); diff != "" {
+			if diff := gocmp.Diff(tt.want, map[string]string(got)); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
