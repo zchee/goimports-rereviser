@@ -196,10 +196,3 @@ func ParseBuildTag(f *ast.File) string {
 
 	return ""
 }
-
-type visitFn func(node ast.Node)
-
-func (f visitFn) Visit(node ast.Node) ast.Visitor {
-	f(node)
-	return f
-}

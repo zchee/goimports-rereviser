@@ -209,7 +209,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 		return sharedPool
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
+	g := &errgroup.Group{}
 
 	for _, original := range originPaths {
 		pathValue := original
@@ -287,7 +287,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 			if cfg.isUseCache && cacheDir != "" && canReadCache {
 				skip, checkErr := reviser.ShouldSkipWithFingerprint(cacheDir, pathToProcess, cfg.useMetadataCache, cacheFingerprint)
 				if checkErr != nil {
-					return fmt.Errorf("Failed to evaluate cache for %s: %w", pathToProcess, checkErr)
+					return fmt.Errorf("failed to evaluate cache for %s: %w", pathToProcess, checkErr)
 				}
 				if skip {
 					return nil
@@ -296,7 +296,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 
 			formattedOutput, originalContent, pathHasChange, err = reviser.NewSourceFile(originProjectName, pathToProcess).Fix(options...)
 			if err != nil {
-				return fmt.Errorf("Failed to fix file %s: %w", pathToProcess, err)
+				return fmt.Errorf("failed to fix file %s: %w", pathToProcess, err)
 			}
 
 			if pathHasChange {
@@ -316,11 +316,11 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 				hash := reviser.ComputeContentHash(cacheContent)
 				entry, entryErr := reviser.NewCacheEntryWithFingerprint(pathToProcess, hash, cfg.useMetadataCache, cacheFingerprint)
 				if entryErr != nil {
-					return fmt.Errorf("Failed to build cache entry for %s: %w", pathToProcess, entryErr)
+					return fmt.Errorf("failed to build cache entry for %s: %w", pathToProcess, entryErr)
 				}
 				if writeErr := reviser.WriteCacheEntry(cacheDir, pathToProcess, entry); writeErr != nil {
 					cacheFile := reviser.CacheFilePath(cacheDir, pathToProcess)
-					return fmt.Errorf("Failed to write cache file %s: %w", cacheFile, writeErr)
+					return fmt.Errorf("failed to write cache file %s: %w", cacheFile, writeErr)
 				}
 			}
 
