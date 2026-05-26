@@ -4,7 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"regexp"
 	"runtime/debug"
@@ -13,7 +13,8 @@ import (
 
 func printUsage() exitCode {
 	if _, err := fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0]); err != nil {
-		log.Fatalf("failed to print usage: %s", err)
+		slog.Error("failed to print usage", "err", err)
+		os.Exit(1)
 	}
 
 	flag.PrintDefaults()
@@ -26,7 +27,7 @@ func printUsage() exitCode {
 func printUsageAndExit(err error) exitCode {
 	printUsage()
 	if err != nil {
-		log.Printf("%s", err)
+		slog.Error("usage error", "err", err)
 		return exitError
 	}
 
@@ -75,7 +76,7 @@ func printVersion(version VersionInfo) exitCode {
 	bi := getBuildInfo()
 	myModule, err := getMyModuleInfo(bi)
 	if err != nil {
-		log.Printf("failed to get my module info: %s", err)
+		slog.Error("failed to get my module info", "err", err)
 		return exitError
 	}
 	fmt.Printf(
@@ -98,7 +99,7 @@ func printVersionOnly(version VersionInfo) exitCode {
 	bi := getBuildInfo()
 	myModule, err := getMyModuleInfo(bi)
 	if err != nil {
-		log.Printf("failed to get my module info: %s", err)
+		slog.Error("failed to get my module info", "err", err)
 		return exitError
 	}
 	fmt.Println(strings.TrimPrefix(myModule.Version, "v"))

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -144,7 +144,7 @@ func Run(version VersionInfo) int {
 		opts = append(opts, engine.WithCompanyPackagePrefixes(cfg.companyPkgPrefixes))
 	}
 
-	log.Printf("Paths: %v\n", originPaths)
+	slog.Info("paths", "paths", originPaths)
 
 	var cacheDir string
 	if cfg.isUseCache {
@@ -155,13 +155,15 @@ func Run(version VersionInfo) int {
 		if cacheDir == "" {
 			usr, err := user.Current()
 			if err != nil {
-				log.Fatalf("Failed to get current user: %+v\n", err)
+				slog.Error("failed to get current user", "err", err)
+				os.Exit(1)
 			}
 			cacheDir = filepath.Join(usr.HomeDir, ".cache", "goimports-rereviser")
 		}
 
 		if err := internalcache.EnsureCacheDir(cacheDir); err != nil {
-			log.Fatalf("Failed to create cache directory: %+v\n", err)
+			slog.Error("failed to create cache directory", "err", err)
+			os.Exit(1)
 		}
 	}
 
@@ -174,7 +176,7 @@ func Run(version VersionInfo) int {
 	}
 
 	if hasChange && cfg.setExitStatus {
-		log.Println("detect changed files")
+		slog.Info("detect changed files")
 		return exitError
 	}
 
@@ -214,7 +216,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 		pathValue := original
 
 		g.Go(func() error {
-			log.Printf("Processing %s\n", pathValue)
+			slog.Info("processing path", "path", pathValue)
 			originProjectName, err := determineProjectName(cfg.projectName, pathValue)
 			if err != nil {
 				return fmt.Errorf("could not determine project name for path %s: %w", pathValue, err)

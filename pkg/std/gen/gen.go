@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"go/format"
 	"html/template"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -42,12 +42,14 @@ func main() {
 	tpl := template.New("tpl")
 	tpl, err := tpl.Parse(fileTemplate)
 	if err != nil {
-		log.Fatalf("Failed to parse template: %+v\n", err)
+		slog.Error("failed to parse template", "err", err)
+		os.Exit(1)
 	}
 
 	packageList, err := packages.Load(nil, "std")
 	if err != nil {
-		log.Fatalf("Failed to load packages: %+v\n", err)
+		slog.Error("failed to load packages", "err", err)
+		os.Exit(1)
 	}
 
 	for _, experimentalPackage := range staticPackageList {
@@ -57,23 +59,27 @@ func main() {
 	}
 
 	if err := tpl.Execute(w, packageList); err != nil {
-		log.Fatalf("Failed to execute template: %+v\n", err)
+		slog.Error("failed to execute template", "err", err)
+		os.Exit(1)
 	}
 
 	data, err := format.Source(w.Bytes())
 	if err != nil {
-		log.Fatalf("Failed to format source: %+v\n", err)
+		slog.Error("failed to format source", "err", err)
+		os.Exit(1)
 	}
 
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
-		log.Fatal("get current filename")
+		slog.Error("get current filename")
+		os.Exit(1)
 	}
 	baseDir := filepath.Dir(filename)
 
 	filePath := filepath.Join(baseDir, "..", fileName)
-	log.Printf("file path to be updated: %s", filePath)
+	slog.Info("file path to be updated", "path", filePath)
 	if err := os.WriteFile(filePath, data, 0o644); err != nil {
-		log.Fatalf("Failed to write file: %+v\n", err)
+		slog.Error("failed to write file", "err", err)
+		os.Exit(1)
 	}
 }
