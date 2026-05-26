@@ -33,6 +33,7 @@ vendor/
 *.a
 
 # Folders
+/bin/
 _obj
 _test
 
