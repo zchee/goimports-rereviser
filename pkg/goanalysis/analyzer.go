@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	"github.com/zchee/goimports-rereviser/v4/pkg/module"
+	"github.com/zchee/goimports-rereviser/v4/internal/modulepath"
 	"github.com/zchee/goimports-rereviser/v4/reviser"
 )
 
@@ -75,7 +75,7 @@ func run(localPkgPrefixes string, options ...reviser.SourceFileOption) func(pass
 
 			if projectName == "" {
 				var err error
-				projectName, err = module.DetermineProjectName("", filePath)
+				projectName, err = modulepath.DetermineProjectName("", filePath)
 				if err != nil {
 					return nil, err
 				}
