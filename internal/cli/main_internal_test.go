@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -10,7 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zchee/goimports-rereviser/v4/reviser"
+	internalcache "github.com/zchee/goimports-rereviser/v4/internal/cache"
+	"github.com/zchee/goimports-rereviser/v4/internal/engine"
 )
 
 func TestProcessPathsProcessesEachFile(t *testing.T) {
@@ -108,14 +109,14 @@ func main() {
 	if err != nil {
 		t.Fatalf("failed to read rewritten file: %v", err)
 	}
-	entry, err := reviser.ReadCacheEntry(cacheDir, filePath)
+	entry, err := internalcache.ReadCacheEntry(cacheDir, filePath)
 	if err != nil {
 		t.Fatalf("failed to read cache entry: %v", err)
 	}
 	if entry == nil {
 		t.Fatalf("expected cache entry after mutating run")
 	}
-	if got, want := entry.Hash, reviser.ComputeContentHash(formatted); got != want {
+	if got, want := entry.Hash, internalcache.ComputeContentHash(formatted); got != want {
 		t.Fatalf("cache hash mismatch: got %q want %q", got, want)
 	}
 
@@ -139,11 +140,11 @@ func main() {
 		t.Fatalf("failed to stat stable fixture mtime: %v", err)
 	}
 	stableModTime = stableStat.ModTime().UTC()
-	stableEntry, err := reviser.NewCacheEntry(filePath, reviser.ComputeContentHash(formatted), cfg.useMetadataCache)
+	stableEntry, err := internalcache.NewCacheEntry(filePath, internalcache.ComputeContentHash(formatted), cfg.useMetadataCache)
 	if err != nil {
 		t.Fatalf("failed to rebuild cache entry after setting stable mtime: %v", err)
 	}
-	if err := reviser.WriteCacheEntry(cacheDir, filePath, stableEntry); err != nil {
+	if err := internalcache.WriteCacheEntry(cacheDir, filePath, stableEntry); err != nil {
 		t.Fatalf("failed to write stable cache entry: %v", err)
 	}
 
@@ -222,7 +223,7 @@ func main() {
 		t.Fatalf("expected repeated stdout output to stay stable\nfirst:\n%s\nsecond:\n%s", firstStdout, secondStdout)
 	}
 
-	entry, err := reviser.ReadCacheEntry(cacheDir, filePath)
+	entry, err := internalcache.ReadCacheEntry(cacheDir, filePath)
 	if err != nil {
 		t.Fatalf("failed to read cache entry: %v", err)
 	}
@@ -268,7 +269,7 @@ func main() {
 	if hasChange {
 		t.Fatalf("expected default mutating run to leave already-default-formatted file unchanged")
 	}
-	entry, err := reviser.ReadCacheEntry(cacheDir, filePath)
+	entry, err := internalcache.ReadCacheEntry(cacheDir, filePath)
 	if err != nil {
 		t.Fatalf("failed to read cache entry after mutating run: %v", err)
 	}
@@ -279,7 +280,7 @@ func main() {
 	cfg.listFileName = true
 	cfg.shouldSeparateNamedImports = true
 	stdout := captureStdout(t, func() {
-		hasChange, err = processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, reviser.SourceFileOptions{reviser.WithSeparatedNamedImports})
+		hasChange, err = processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, engine.SourceFileOptions{engine.WithSeparatedNamedImports})
 		if err != nil {
 			t.Fatalf("list-diff processPaths returned error: %v", err)
 		}
@@ -331,7 +332,7 @@ func main() {
 	}
 
 	cfg.shouldSeparateNamedImports = true
-	hasChange, err = processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, reviser.SourceFileOptions{reviser.WithSeparatedNamedImports})
+	hasChange, err = processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, engine.SourceFileOptions{engine.WithSeparatedNamedImports})
 	if err != nil {
 		t.Fatalf("separate-named processPaths returned error: %v", err)
 	}
@@ -390,7 +391,7 @@ func main() {
 	cfg.listFileName = true
 	cfg.shouldSeparateNamedImports = true
 	stdout := captureStdout(t, func() {
-		hasChange, err = processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, reviser.SourceFileOptions{reviser.WithSeparatedNamedImports})
+		hasChange, err = processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, engine.SourceFileOptions{engine.WithSeparatedNamedImports})
 		if err != nil {
 			t.Fatalf("list-diff write processPaths returned error: %v", err)
 		}
@@ -476,7 +477,7 @@ func main() {
 		t.Fatalf("expected list-diff mode to leave the file unchanged\nwant:\n%s\n got:\n%s", input, contentAfterRuns)
 	}
 
-	entry, err := reviser.ReadCacheEntry(cacheDir, filePath)
+	entry, err := internalcache.ReadCacheEntry(cacheDir, filePath)
 	if err != nil {
 		t.Fatalf("failed to read cache entry: %v", err)
 	}
@@ -531,13 +532,32 @@ func main() {
 	}
 
 	cmd := exec.Command("go", "run", ".", filePath)
-	cmd.Dir = "."
+	cmd.Dir = "../.."
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("expected go run to succeed without --use-cache, got err=%v\noutput:\n%s", err, output)
 	}
 	if bytes.Contains(output, []byte("cache-fast-skip requires --use-cache")) {
 		t.Fatalf("unexpected stale cache-fast-skip validation in output:\n%s", output)
+	}
+}
+
+func TestCLI_VersionOnlyUsesCommandFacadeLdflags(t *testing.T) {
+	cmd := exec.Command(
+		"go",
+		"run",
+		"-ldflags",
+		"-X main.Tag=v9.8.7 -X main.Commit=abc123 -X main.SourceURL=https://example.invalid/repo -X main.GoVersion=go1.26",
+		".",
+		"-version-only",
+	)
+	cmd.Dir = "../.."
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("expected go run to succeed, got err=%v\noutput:\n%s", err, output)
+	}
+	if got, want := strings.TrimSpace(string(output)), "9.8.7"; got != want {
+		t.Fatalf("version-only output mismatch: got %q want %q\nfull output:\n%s", got, want, output)
 	}
 }
 

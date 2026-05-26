@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"errors"
@@ -60,15 +60,15 @@ func getMyModuleInfo(bi *debug.BuildInfo) (*debug.Module, error) {
 	return nil, errors.New("no matching module found in build info")
 }
 
-func printVersion() exitCode {
-	if Tag != "" {
+func printVersion(version VersionInfo) exitCode {
+	if version.Tag != "" {
 		fmt.Printf(
 			"version: %s\nbuilt with: %s\ntag: %s\ncommit: %s\nsource: %s\n",
-			strings.TrimPrefix(Tag, "v"),
-			GoVersion,
-			Tag,
-			Commit,
-			SourceURL,
+			strings.TrimPrefix(version.Tag, "v"),
+			version.GoVersion,
+			version.Tag,
+			version.Commit,
+			version.SourceURL,
 		)
 		return exitUsage
 	}
@@ -90,9 +90,9 @@ func printVersion() exitCode {
 	return exitUsage
 }
 
-func printVersionOnly() exitCode {
-	if Tag != "" {
-		fmt.Println(strings.TrimPrefix(Tag, "v"))
+func printVersionOnly(version VersionInfo) exitCode {
+	if version.Tag != "" {
+		fmt.Println(strings.TrimPrefix(version.Tag, "v"))
 		return exitUsage
 	}
 	bi := getBuildInfo()
