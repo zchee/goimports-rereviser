@@ -64,6 +64,7 @@ func runFixCase(t *testing.T, projectName, filePath, archive string, wantChange,
 		if err := os.WriteFile(filePath, input, 0o644); err != nil {
 			t.Fatalf("failed to write test file: %v", err)
 		}
+		t.Cleanup(func() { _ = os.Remove(filePath) })
 	}
 
 	got, _, hasChange, err := NewSourceFile(projectName, filePath).Fix(opts...)
@@ -1345,7 +1346,8 @@ func main() {
 `,
 			wantChange: true,
 			wantErr:    false,
-		}, "success with \"C\"": {
+		},
+		"success with \"C\"": {
 			projectName: testProjectName,
 			filePath:    testFilePath,
 			archive: `
@@ -1407,10 +1409,11 @@ func TestSourceFile_Fix_WithAliasForVersionSuffix(t *testing.T) {
 		archive     string
 		wantChange  bool
 		wantErr     bool
-	}{"success with golang.org/x/tools/go/packages": {
-		projectName: testProjectName,
-		filePath:    testFilePath,
-		archive: `
+	}{
+		"success with golang.org/x/tools/go/packages": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `
 -- input.go --
 package testdata
 import(
@@ -1438,12 +1441,13 @@ func main() {
 	fmt.Println(pg.In([]string{"test"}))
 }
 `,
-		wantChange: true,
-		wantErr:    false,
-	}, "success with \"C\"": {
-		projectName: testProjectName,
-		filePath:    testFilePath,
-		archive: `
+			wantChange: true,
+			wantErr:    false,
+		},
+		"success with \"C\"": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `
 -- input.go --
 package testdata
 /*
@@ -1485,13 +1489,14 @@ func main() {
 	fmt.Println(pg.In([]string{"test"}))
 }
 `,
-		wantChange: true,
-		wantErr:    false,
-	}}
+			wantChange: true,
+			wantErr:    false,
+		},
+	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			runFixCase(t, tt.projectName, testFilePath, tt.archive, tt.wantChange, tt.wantErr, WithUsingAliasForVersionSuffix)
+			runFixCase(t, tt.projectName, tt.filePath, tt.archive, tt.wantChange, tt.wantErr, WithUsingAliasForVersionSuffix)
 		})
 	}
 }
@@ -1503,10 +1508,11 @@ func TestSourceFile_Fix_WithRemovingUnusedImportsAndAlias(t *testing.T) {
 		archive     string
 		wantChange  bool
 		wantErr     bool
-	}{"removes unused import and sets alias": {
-		projectName: testProjectName,
-		filePath:    testFilePath,
-		archive: `-- input.go --
+	}{
+		"removes unused import and sets alias": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `-- input.go --
 package testdata
 import(
 	"fmt"
@@ -1530,13 +1536,13 @@ func main() {
 	fmt.Println(aliaspkg.Value())
 }
 `,
-		wantChange: true,
-		wantErr:    false,
-	}}
+			wantChange: true,
+			wantErr:    false,
+		},
+	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			t.Cleanup(func() { _ = os.Remove(tt.filePath) })
 			runFixCase(
 				t, tt.projectName, tt.filePath, tt.archive, tt.wantChange, tt.wantErr,
 				WithRemovingUnusedImports,
