@@ -1,4 +1,4 @@
-package reviser
+package engine
 
 import (
 	"errors"
@@ -6,14 +6,15 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/alitto/pond"
 	"github.com/charlievieth/fastwalk"
+
+	internalcache "github.com/zchee/goimports-rereviser/v4/internal/cache"
+	internalwalk "github.com/zchee/goimports-rereviser/v4/internal/walk"
 )
 
 type walkCallbackFunc = func(hasChanged bool, path string, content []byte) error
@@ -26,19 +27,9 @@ const (
 )
 
 const (
-	goExtension              = ".go"
-	recursivePath            = "./..."
-	defaultParallelThreshold = 8
-)
-
-var (
-	currentPaths = []string{".", "." + string(filepath.Separator)}
-	// ignoredByGoToolNames mirrors the directories the go tool skips when
-	// evaluating package patterns (see `go help packages`).
-	ignoredByGoToolNames = map[string]struct{}{
-		"testdata": {},
-		"vendor":   {},
-	}
+	goExtension              = internalwalk.GoExtension
+	recursivePath            = internalwalk.RecursivePath
+	defaultParallelThreshold = internalwalk.DefaultParallelThreshold
 )
 
 var ErrPathIsNotDir = errors.New("path is not a directory")
@@ -264,7 +255,7 @@ func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *
 				}
 
 				if d.cacheEnabled && cacheMode == cacheReadWrite {
-					skip, cacheErr := ShouldSkipWithFingerprint(d.cacheDir, absPath, d.useMetadataCache, d.cacheFingerprint)
+					skip, cacheErr := internalcache.ShouldSkipWithFingerprint(d.cacheDir, absPath, d.useMetadataCache, d.cacheFingerprint)
 					if cacheErr != nil {
 						errMu.Lock()
 						if *processingErr == nil {
@@ -298,12 +289,12 @@ func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *
 				}
 
 				if d.cacheEnabled && cacheMode == cacheReadWrite {
-					hash := ComputeContentHash(content)
+					hash := internalcache.ComputeContentHash(content)
 					if hash == "" {
 						return
 					}
 
-					entry, metaErr := NewCacheEntryWithFingerprint(absPath, hash, d.useMetadataCache, d.cacheFingerprint)
+					entry, metaErr := internalcache.NewCacheEntryWithFingerprint(absPath, hash, d.useMetadataCache, d.cacheFingerprint)
 					if metaErr != nil {
 						errMu.Lock()
 						if *processingErr == nil {
@@ -328,70 +319,7 @@ func (d *SourceDir) walk(submit func(func()), callback walkCallbackFunc, errMu *
 }
 
 func (d *SourceDir) makeSubmitter() (func(func()), func()) {
-	var (
-		providedPool = d.workerPool
-		pool         = providedPool
-		poolMu       sync.Mutex
-		poolCreated  bool
-		pending      sync.WaitGroup
-		fileCount    atomic.Int32
-	)
-
-	threshold := d.sequentialThreshold
-	if threshold <= 0 {
-		threshold = defaultParallelThreshold
-	}
-
-	canCreatePool := providedPool == nil
-
-	submit := func(task func()) {
-		poolMu.Lock()
-		currentPool := pool
-		poolMu.Unlock()
-
-		if currentPool != nil {
-			pending.Add(1)
-			currentPool.Submit(func() {
-				defer pending.Done()
-				task()
-			})
-			return
-		}
-
-		count := fileCount.Add(1)
-		if !canCreatePool || int(count) <= threshold {
-			task()
-			return
-		}
-
-		poolMu.Lock()
-		if pool == nil && canCreatePool {
-			pool = pond.New(runtime.GOMAXPROCS(0)*2, 0)
-			poolCreated = true
-		}
-		currentPool = pool
-		poolMu.Unlock()
-
-		if currentPool != nil {
-			pending.Add(1)
-			currentPool.Submit(func() {
-				defer pending.Done()
-				task()
-			})
-			return
-		}
-
-		task()
-	}
-
-	wait := func() {
-		pending.Wait()
-		if poolCreated {
-			pool.StopAndWait()
-		}
-	}
-
-	return submit, wait
+	return internalwalk.NewSubmitter(d.workerPool, d.sequentialThreshold)
 }
 
 func (d *SourceDir) isExcluded(path string) bool {
@@ -419,20 +347,7 @@ func (d *SourceDir) isExcluded(path string) bool {
 // directories named vendor or testdata and any path component beginning with
 // '.' or '_' are skipped when expanding patterns such as ./... .
 func isGoToolIgnored(path string) bool {
-	base := filepath.Base(path)
-	if base == "" || base == "." || base == string(filepath.Separator) {
-		return false
-	}
-
-	switch base[0] {
-	case '.':
-		return true
-	case '_':
-		return true
-	}
-
-	_, ok := ignoredByGoToolNames[base]
-	return ok
+	return internalwalk.IsGoToolIgnored(path)
 }
 
 type UnformattedCollection struct {
@@ -467,32 +382,14 @@ func (c *UnformattedCollection) String() string {
 }
 
 func IsDir(path string) (string, bool) {
-	if path == recursivePath || slices.Contains(currentPaths, path) {
-		var err error
-		path, err = os.Getwd()
-		if err != nil {
-			return path, false
-		}
-	}
-
-	dir, err := os.Open(path)
-	if err != nil {
-		return path, false
-	}
-
-	dirStat, err := dir.Stat()
-	if err != nil {
-		return path, false
-	}
-
-	return path, dirStat.IsDir()
+	return internalwalk.IsDir(path)
 }
 
 func isGoFile(path string) bool {
-	return filepath.Ext(path) == goExtension
+	return internalwalk.IsGoFile(path)
 }
 
-func (d *SourceDir) writeCache(path string, entry CacheEntry) error {
+func (d *SourceDir) writeCache(path string, entry internalcache.CacheEntry) error {
 	if !d.cacheEnabled || d.cacheDir == "" || entry.Hash == "" {
 		return nil
 	}
@@ -502,5 +399,5 @@ func (d *SourceDir) writeCache(path string, entry CacheEntry) error {
 		absPath = filepath.Join(d.dir, path)
 	}
 
-	return WriteCacheEntry(d.cacheDir, absPath, entry)
+	return internalcache.WriteCacheEntry(d.cacheDir, absPath, entry)
 }

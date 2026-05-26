@@ -1,4 +1,4 @@
-package reviser
+package engine
 
 import (
 	"bytes"
@@ -16,8 +16,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/zchee/goimports-rereviser/v4/pkg/astutil"
-	"github.com/zchee/goimports-rereviser/v4/pkg/std"
+	"github.com/zchee/goimports-rereviser/v4/internal/pkgdeps"
 )
 
 const (
@@ -188,78 +187,38 @@ func (f *SourceFile) groupImports(
 	)
 
 	for imprt := range importsWithMetadata {
-		isLinknameBlank := isLinknameBlankImport(imprt, importsWithMetadata[imprt])
+		classified := classifyImport(projectName, localPkgPrefixes, f.importsOrders, f.shouldSeparateNamedImports, imprt, importsWithMetadata[imprt])
 
-		if f.importsOrders.hasBlankedImportOrder() && strings.HasPrefix(imprt, "_") && !isLinknameBlank {
+		switch classified.bucket {
+		case importBucketBlanked:
 			blankedImports = append(blankedImports, imprt)
-			continue
-		}
-
-		if f.importsOrders.hasDottedImportOrder() && strings.HasPrefix(imprt, ".") {
+		case importBucketDotted:
 			dottedImports = append(dottedImports, imprt)
-			continue
-		}
-
-		pkgWithoutAlias := skipPackageAlias(imprt)
-		values := strings.Split(imprt, " ")
-
-		if _, ok := std.StdPackages[pkgWithoutAlias]; ok {
-			if f.shouldSeparateNamedImports && !isLinknameBlank {
-				if len(values) > 1 {
-					namedStdImports = append(namedStdImports, imprt)
-				} else {
-					stdImports = append(stdImports, imprt)
-				}
+		case importBucketStd:
+			if classified.named {
+				namedStdImports = append(namedStdImports, imprt)
 				continue
 			}
 			stdImports = append(stdImports, imprt)
-			continue
-		}
-
-		var isLocalPackageFound bool
-		for _, localPackagePrefix := range localPkgPrefixes {
-			if strings.HasPrefix(pkgWithoutAlias, localPackagePrefix) && pkgWithoutAlias != projectName && !strings.HasPrefix(pkgWithoutAlias, projectName+"/") {
-				if f.shouldSeparateNamedImports && !isLinknameBlank {
-					if len(values) > 1 {
-						namedProjectLocalPkgs = append(namedProjectLocalPkgs, imprt)
-					} else {
-						projectLocalPkgs = append(projectLocalPkgs, imprt)
-					}
-					isLocalPackageFound = true
-					break
-				}
-				projectLocalPkgs = append(projectLocalPkgs, imprt)
-				isLocalPackageFound = true
-				break
+		case importBucketCompany:
+			if classified.named {
+				namedProjectLocalPkgs = append(namedProjectLocalPkgs, imprt)
+				continue
 			}
-		}
-
-		if isLocalPackageFound {
-			continue
-		}
-
-		if pkgWithoutAlias == projectName || strings.HasPrefix(pkgWithoutAlias, projectName+"/") {
-			if f.shouldSeparateNamedImports && !isLinknameBlank {
-				if len(values) > 1 {
-					namedProjectImports = append(namedProjectImports, imprt)
-				} else {
-					projectImports = append(projectImports, imprt)
-				}
+			projectLocalPkgs = append(projectLocalPkgs, imprt)
+		case importBucketProject:
+			if classified.named {
+				namedProjectImports = append(namedProjectImports, imprt)
 				continue
 			}
 			projectImports = append(projectImports, imprt)
-			continue
-		}
-
-		if f.shouldSeparateNamedImports && !isLinknameBlank {
-			if len(values) > 1 {
+		default:
+			if classified.named {
 				namedGeneralImports = append(namedGeneralImports, imprt)
-			} else {
-				generalImports = append(generalImports, imprt)
+				continue
 			}
-			continue
+			generalImports = append(generalImports, imprt)
 		}
-		generalImports = append(generalImports, imprt)
 	}
 
 	slices.Sort(stdImports)
@@ -595,13 +554,13 @@ func (f *SourceFile) parseImports(file *ast.File) (map[string]*commentsMetadata,
 
 	if shouldRemoveUnusedImports || shouldUseAliasForVersionSuffix {
 		var err error
-		buildTag := astutil.ParseBuildTag(file)
-		packageImports, err = astutil.LoadPackageDependencies(filepath.Dir(f.filePath), buildTag)
+		buildTag := pkgdeps.ParseBuildTag(file)
+		packageImports, err = pkgdeps.Load(filepath.Dir(f.filePath), buildTag)
 		if err != nil && buildTag != "" {
 			// Retry without build tag — files with custom build constraints
 			// (like tools.go with //+build tools) may cause go list conflicts
 			// when the file imports the project itself.
-			packageImports, err = astutil.LoadPackageDependencies(filepath.Dir(f.filePath), "")
+			packageImports, err = pkgdeps.Load(filepath.Dir(f.filePath), "")
 		}
 		if err != nil {
 			return nil, err
@@ -610,7 +569,7 @@ func (f *SourceFile) parseImports(file *ast.File) (map[string]*commentsMetadata,
 
 	var usedImports map[string]bool
 	if shouldRemoveUnusedImports {
-		usedImports = astutil.UsedImports(file, packageImports)
+		usedImports = pkgdeps.UsedImports(file, packageImports)
 	}
 
 	for _, decl := range file.Decls {
