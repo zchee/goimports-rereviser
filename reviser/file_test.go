@@ -61,6 +61,9 @@ func runFixCase(t *testing.T, projectName, filePath, archive string, wantChange,
 	input, want := parseTestArchive(t, archive)
 
 	if filePath != StandardInput && !strings.Contains(filePath, "does-not-exist") {
+		if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+			t.Fatalf("failed to create test directory: %v", err)
+		}
 		if err := os.WriteFile(filePath, input, 0o644); err != nil {
 			t.Fatalf("failed to write test file: %v", err)
 		}

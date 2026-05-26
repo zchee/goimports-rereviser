@@ -163,9 +163,13 @@ func TestShouldSkipByMetadata(t *testing.T) {
 		"metadata mismatch requires processing": {
 			setup: func(t *testing.T, cacheDir, filePath string) {
 				t.Helper()
-				initial := []byte("package main\n")
+				initial := []byte("package main\nconst x = 0\n")
 				if err := os.WriteFile(filePath, initial, 0o644); err != nil {
 					t.Fatalf("write file: %v", err)
+				}
+				oldTime := time.Now().Add(-time.Hour)
+				if err := os.Chtimes(filePath, oldTime, oldTime); err != nil {
+					t.Fatalf("backdate file: %v", err)
 				}
 				entry, err := NewCacheEntry(filePath, ComputeContentHash(initial), true)
 				if err != nil {
@@ -174,7 +178,6 @@ func TestShouldSkipByMetadata(t *testing.T) {
 				if err := WriteCacheEntry(cacheDir, filePath, entry); err != nil {
 					t.Fatalf("write cache entry: %v", err)
 				}
-				time.Sleep(5 * time.Millisecond)
 				updated := []byte("package main\nconst x = 1\n")
 				if err := os.WriteFile(filePath, updated, 0o644); err != nil {
 					t.Fatalf("modify file: %v", err)
