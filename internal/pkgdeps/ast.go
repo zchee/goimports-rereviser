@@ -1,10 +1,8 @@
-package astutil
+package pkgdeps
 
 import (
 	"go/ast"
 	"strings"
-
-	"github.com/zchee/goimports-rereviser/v4/internal/pkgdeps"
 )
 
 const (
@@ -12,10 +10,7 @@ const (
 	deprecatedBuildTagPrefix = "//+build"
 )
 
-// PackageImports is map of imports with their package names
-type PackageImports map[string]string
-
-// UsesImport is for analyze if the import dependency is in use
+// UsesImport is for analyze if the import dependency is in use.
 func UsesImport(f *ast.File, packageImports PackageImports, importPath string) bool {
 	importPath = strings.Trim(importPath, `"`)
 	return UsedImports(f, packageImports)[importPath]
@@ -51,49 +46,28 @@ func UsedImports(f *ast.File, packageImports PackageImports) map[string]bool {
 		aliasToPath[pkgName] = path
 	}
 
-	ast.Inspect(
-		f,
-		func(node ast.Node) bool {
-			sel, ok := node.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-
-			ident, ok := sel.X.(*ast.Ident)
-			if !ok || ident.Obj != nil {
-				return true
-			}
-
-			if path, ok := aliasToPath[ident.Name]; ok {
-				used[path] = true
-			}
-
+	ast.Inspect(f, func(node ast.Node) bool {
+		sel, ok := node.(*ast.SelectorExpr)
+		if !ok {
 			return true
-		},
-	)
+		}
+
+		ident, ok := sel.X.(*ast.Ident)
+		if !ok || ident.Obj != nil {
+			return true
+		}
+
+		if path, ok := aliasToPath[ident.Name]; ok {
+			used[path] = true
+		}
+
+		return true
+	})
 
 	return used
 }
 
-// ClearPackageDepsCache clears the package dependencies cache.
-// This is primarily for testing to prevent cache pollution between tests.
-func ClearPackageDepsCache() {
-	pkgdeps.ClearCache()
-}
-
-// LoadPackageDependencies will return all package's imports with it names:
-//
-//	key - package(ex.: github/pkg/errors), value - name(ex.: errors)
-//
-// Results are cached for performance. Multiple calls with the same (dir, buildTag)
-// pair will return cached results. Only successful results are cached; errors are
-// not cached to avoid persisting transient failures.
-func LoadPackageDependencies(dir, buildTag string) (PackageImports, error) {
-	imports, err := pkgdeps.Load(dir, buildTag)
-	return PackageImports(imports), err
-}
-
-// ParseBuildTag parse `//+build ...` or `//go:build ` on a first line of *ast.File
+// ParseBuildTag parse `//+build ...` or `//go:build ` on a first line of *ast.File.
 func ParseBuildTag(f *ast.File) string {
 	for _, g := range f.Comments {
 		for _, c := range g.List {
