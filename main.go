@@ -58,7 +58,8 @@ func init() {
 	flag.StringVar(&cfg.companyPkgPrefixes, "company-prefixes", "", `Company package prefixes which will be placed after 3rd-party group by default(if defined). Values should be comma-separated. Optional parameters.`)
 	flag.StringVar(&cfg.output, "output", "file", `Can be "file", "write" or "stdout". Whether to write the formatted content back to the file or to stdout. When "write" together with "-list-diff" will list the file name and write back to the file. Optional parameter.`)
 	flag.StringVar(&cfg.excludes, "excludes", "", `Exclude files or dirs, example: '.git/,proto/*.go'.`)
-	flag.StringVar(&cfg.importsOrder, "imports-order", "std,general,company,project", `Your imports groups can be sorted in your way. Optional parameter.
+	flag.StringVar(
+		&cfg.importsOrder, "imports-order", "std,general,company,project", `Your imports groups can be sorted in your way. Optional parameter.
 std - std import group.
 general - libs for general purpose.
 company - inter-org or your company libs(if you set '-company-prefixes'-option, then 4th group will be split separately. In other case, it will be the part of general purpose libs).
