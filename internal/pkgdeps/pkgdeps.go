@@ -85,8 +85,8 @@ func loadUncached(dir, buildTag string) (PackageImports, error) {
 		return PackageImports{}, err
 	}
 
-	if packages.PrintErrors(pkgs) > 0 {
-		return PackageImports{}, errors.New("package has an errors")
+	if err := collectPackageErrors(pkgs); err != nil {
+		return PackageImports{}, err
 	}
 
 	result := PackageImports{}
@@ -97,4 +97,14 @@ func loadUncached(dir, buildTag string) (PackageImports, error) {
 	}
 
 	return result, nil
+}
+
+func collectPackageErrors(pkgs []*packages.Package) error {
+	var errs []error
+	for _, pkg := range pkgs {
+		for _, err := range pkg.Errors {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }

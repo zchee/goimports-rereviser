@@ -35,13 +35,7 @@ func IsDir(path string) (string, bool) {
 		}
 	}
 
-	dir, err := os.Open(path)
-	if err != nil {
-		return path, false
-	}
-	defer dir.Close()
-
-	dirStat, err := dir.Stat()
+	dirStat, err := os.Stat(path)
 	if err != nil {
 		return path, false
 	}
@@ -128,8 +122,12 @@ func NewSubmitter(providedPool *pond.WorkerPool, threshold int) (func(func()), f
 
 	wait := func() {
 		pending.Wait()
-		if poolCreated {
-			pool.StopAndWait()
+		poolMu.Lock()
+		createdPool := poolCreated
+		currentPool := pool
+		poolMu.Unlock()
+		if createdPool && currentPool != nil {
+			currentPool.StopAndWait()
 		}
 	}
 

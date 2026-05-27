@@ -1,10 +1,14 @@
 package pkgdeps
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"golang.org/x/tools/go/packages"
 )
 
 func TestLoadSingleflight(t *testing.T) {
@@ -146,5 +150,36 @@ func TestLoadSeparatesBuildTags(t *testing.T) {
 
 	if got := callCount.Load(); got != 2 {
 		t.Fatalf("expected separate cache entries per build tag, got %d loader calls", got)
+	}
+}
+
+func TestCollectPackageErrorsReturnsJoinedPackageErrors(t *testing.T) {
+	t.Parallel()
+
+	err := collectPackageErrors([]*packages.Package{
+		{
+			Errors: []packages.Error{
+				{Pos: "a.go:3:8", Msg: "no required module provides package example.com/does/not/exist", Kind: packages.ListError},
+				{Pos: "b.go:7:9", Msg: "undefined: missing", Kind: packages.TypeError},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected joined package errors")
+	}
+
+	var joined interface{ Unwrap() []error }
+	if !errors.As(err, &joined) {
+		t.Fatalf("expected joined package errors, got %T: %v", err, err)
+	}
+	if len(joined.Unwrap()) == 0 {
+		t.Fatalf("expected joined error to contain package load errors")
+	}
+	var pkgErr packages.Error
+	if !errors.As(err, &pkgErr) {
+		t.Fatalf("expected error chain to contain packages.Error, got %T: %v", err, err)
+	}
+	if got := err.Error(); !strings.Contains(got, "example.com/does/not/exist") || !strings.Contains(got, "undefined: missing") {
+		t.Fatalf("expected specific package load errors, got: %v", err)
 	}
 }

@@ -40,7 +40,7 @@ func classifyImport(
 	}
 
 	pkgWithoutAlias := skipPackageAlias(imprt)
-	isNamed := separateNamed && !isLinknameBlank && len(strings.Split(imprt, " ")) > 1
+	isNamed := separateNamed && !isLinknameBlank && strings.Contains(imprt, " ")
 
 	if _, ok := std.StdPackages[pkgWithoutAlias]; ok {
 		return classifiedImport{bucket: importBucketStd, named: isNamed}

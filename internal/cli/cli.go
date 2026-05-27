@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -20,6 +19,8 @@ import (
 	"github.com/zchee/goimports-rereviser/v4/internal/modulepath"
 	internalwalk "github.com/zchee/goimports-rereviser/v4/internal/walk"
 )
+
+const cacheDirName = "goimports-rereviser"
 
 // VersionInfo contains release metadata injected by the command facade.
 type VersionInfo struct {
@@ -148,17 +149,11 @@ func Run(version VersionInfo) int {
 
 	var cacheDir string
 	if cfg.isUseCache {
-		if xdgCacheDir := os.Getenv("XDG_CACHE_HOME"); xdgCacheDir != "" {
-			cacheDir = filepath.Join(xdgCacheDir, "goimports-rereviser")
-		}
-
-		if cacheDir == "" {
-			usr, err := user.Current()
-			if err != nil {
-				slog.Error("failed to get current user", "err", err)
-				os.Exit(1)
-			}
-			cacheDir = filepath.Join(usr.HomeDir, ".cache", "goimports-rereviser")
+		var err error
+		cacheDir, err = defaultCacheDir()
+		if err != nil {
+			slog.Error("failed to get user cache directory", "err", err)
+			os.Exit(1)
 		}
 
 		if err := internalcache.EnsureCacheDir(cacheDir); err != nil {
@@ -340,6 +335,14 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 	}
 
 	return hasChange, nil
+}
+
+func defaultCacheDir() (string, error) {
+	cacheBase, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cacheBase, cacheDirName), nil
 }
 
 func formatterCacheFingerprint(cfg *Config, projectName string) string {

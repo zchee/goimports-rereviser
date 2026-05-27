@@ -531,7 +531,7 @@ func main() {
 		t.Fatalf("failed to write fixture: %v", err)
 	}
 
-	cmd := exec.Command("go", "run", ".", filePath)
+	cmd := exec.Command("go", "run", ".", "-project-name", "example.com/test", filePath)
 	cmd.Dir = "../.."
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -539,6 +539,23 @@ func main() {
 	}
 	if bytes.Contains(output, []byte("cache-fast-skip requires --use-cache")) {
 		t.Fatalf("unexpected stale cache-fast-skip validation in output:\n%s", output)
+	}
+}
+
+func TestDefaultCacheDirUsesUserCacheDir(t *testing.T) {
+	userCacheDir, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatalf("os.UserCacheDir returned error: %v", err)
+	}
+
+	got, err := defaultCacheDir()
+	if err != nil {
+		t.Fatalf("defaultCacheDir returned error: %v", err)
+	}
+
+	want := filepath.Join(userCacheDir, cacheDirName)
+	if got != want {
+		t.Fatalf("default cache directory mismatch: got %q want %q", got, want)
 	}
 }
 

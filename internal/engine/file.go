@@ -279,9 +279,9 @@ func isLinknameBlankImport(imprt string, meta *commentsMetadata) bool {
 }
 
 func skipPackageAlias(pkg string) string {
-	values := strings.Split(pkg, " ")
-	if len(values) > 1 {
-		return strings.Trim(values[1], `"`)
+	_, path, found := strings.Cut(pkg, " ")
+	if found {
+		return strings.Trim(path, `"`)
 	}
 
 	return strings.Trim(pkg, `"`)

@@ -1,6 +1,7 @@
 package module
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -153,5 +154,18 @@ func TestDetermineProjectName(t *testing.T) {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func TestDetermineProjectNameWithoutGoModReturnsUndefinedModuleError(t *testing.T) {
+	t.Parallel()
+
+	got, err := DetermineProjectName("", filepath.Join(t.TempDir(), "without-module", "main.go"))
+	if got != "" {
+		t.Fatalf("expected empty project name on error, got %q", got)
+	}
+	var undefinedErr *UndefinedModuleError
+	if !errors.As(err, &undefinedErr) {
+		t.Fatalf("expected UndefinedModuleError, got %T: %v", err, err)
 	}
 }

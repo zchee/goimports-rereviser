@@ -84,6 +84,9 @@ func DetermineProjectName(projectName, filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if projectRootPath == "" {
+		return "", &UndefinedModuleError{}
+	}
 
 	moduleName, err := Name(projectRootPath)
 	if err != nil {
