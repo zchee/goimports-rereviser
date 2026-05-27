@@ -22,6 +22,8 @@ import (
 
 const cacheDirName = "goimports-rereviser"
 
+var writeCacheEntry = internalcache.WriteCacheEntry
+
 // VersionInfo contains release metadata injected by the command facade.
 type VersionInfo struct {
 	Tag       string
@@ -153,12 +155,12 @@ func Run(version VersionInfo) int {
 		cacheDir, err = defaultCacheDir()
 		if err != nil {
 			slog.Error("failed to get user cache directory", "err", err)
-			os.Exit(1)
+			return exitError
 		}
 
 		if err := internalcache.EnsureCacheDir(cacheDir); err != nil {
 			slog.Error("failed to create cache directory", "err", err)
-			os.Exit(1)
+			return exitError
 		}
 	}
 
@@ -206,6 +208,7 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 	}
 
 	g := &errgroup.Group{}
+	g.SetLimit(runtime.GOMAXPROCS(0))
 
 	for _, original := range originPaths {
 		pathValue := original
@@ -314,9 +317,9 @@ func processPaths(ctx context.Context, cfg *Config, originPaths []string, cacheD
 				if entryErr != nil {
 					return fmt.Errorf("failed to build cache entry for %s: %w", pathToProcess, entryErr)
 				}
-				if writeErr := internalcache.WriteCacheEntry(cacheDir, pathToProcess, entry); writeErr != nil {
+				if writeErr := writeCacheEntry(cacheDir, pathToProcess, entry); writeErr != nil {
 					cacheFile := internalcache.CacheFilePath(cacheDir, pathToProcess)
-					return fmt.Errorf("failed to write cache file %s: %w", cacheFile, writeErr)
+					slog.Warn("failed to write cache entry", "path", pathToProcess, "cache_file", cacheFile, "err", writeErr)
 				}
 			}
 

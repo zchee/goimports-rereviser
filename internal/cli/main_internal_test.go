@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -165,6 +166,64 @@ func main() {
 	}
 	if got, want := statAfterSecondRun.Size(), statAfterFirstRun.Size(); got != want {
 		t.Fatalf("expected second run to preserve file size: got %d want %d", got, want)
+	}
+}
+
+func TestProcessPaths_CacheWriteFailureIsNonFatal(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "main.go")
+
+	input := []byte(`package main
+
+import (
+	"github.com/pkg/errors"
+	"fmt"
+)
+
+func main() {
+	fmt.Println(errors.New("cache write failure"))
+}
+`)
+	if err := os.WriteFile(filePath, input, 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	origCfg := cfg
+	cfg = Config{
+		projectName:      "example.com/test",
+		output:           "file",
+		isUseCache:       true,
+		useMetadataCache: true,
+	}
+	t.Cleanup(func() { cfg = origCfg })
+
+	cacheWriteErr := errors.New("injected cache write failure")
+	origWriteCacheEntry := writeCacheEntry
+	var attemptedCachePath string
+	writeCacheEntry = func(cacheDir, absPath string, entry internalcache.CacheEntry) error {
+		attemptedCachePath = absPath
+		return cacheWriteErr
+	}
+	t.Cleanup(func() { writeCacheEntry = origWriteCacheEntry })
+
+	hasChange, err := processPaths(t.Context(), &cfg, []string{filePath}, cacheDir, nil)
+	if err != nil {
+		t.Fatalf("processPaths should ignore cache write failures, got error: %v", err)
+	}
+	if !hasChange {
+		t.Fatalf("expected processPaths to still report the formatted file change")
+	}
+	if attemptedCachePath != filePath {
+		t.Fatalf("cache write path mismatch: got %q want %q", attemptedCachePath, filePath)
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read rewritten file: %v", err)
+	}
+	if !bytes.Contains(content, []byte("\n\t\"fmt\"\n\n\t\"github.com/pkg/errors\"")) {
+		t.Fatalf("expected formatting to complete despite cache write failure:\n%s", content)
 	}
 }
 
