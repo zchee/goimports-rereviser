@@ -68,3 +68,4 @@ reviser/testdata
 # binary
 /goimports-rereviser
 .omx/
+.codex/
