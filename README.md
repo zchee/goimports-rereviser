@@ -54,10 +54,11 @@ Usage of goimports-rereviser:
     	general - libs for general purpose.
     	company - inter-org or your company libs(if you set '-company-prefixes'-option, then 4th group will be split separately. In other case, it will be the part of general purpose libs).
     	project - your local project dependencies.
-	blanked - accepted for compatibility and ignored; blank imports are grouped by package path.
-    	dotted - imports with "." alias. (default "std,general,company,project")
+    	blanked - accepted for compatibility and ignored; blank imports are grouped by package path.
+    	dotted - imports with "." alias.
+    	 (default "std,general,company,project")
   -list-diff
-    	Option will list files whose formatting differs from goimports-rereviser. Optional parameter.
+    	Option will list files whose formatting differs from goimports-reengine. Optional parameter.
   -output string
     	Can be "file", "write" or "stdout". Whether to write the formatted content back to the file or to stdout. When "write" together with "-list-diff" will list the file name and write back to the file. Optional parameter. (default "file")
   -project-name string
