@@ -1148,35 +1148,6 @@ import (
 			wantChange:   true,
 			wantErr:      false,
 		},
-		"nonblank option is accepted and ignored": {
-			projectName: testProjectName,
-			filePath:    testFilePath,
-			archive: `
--- input.go --
-package testdata
-
-import (
-	_ "embed"
-
-	"fmt"
-
-	"golang.org/x/tools/go/packages"
-)
--- want.go --
-package testdata
-
-import (
-	"fmt"
-
-	_ "embed"
-
-	"golang.org/x/tools/go/packages"
-)
-`,
-			importsOrder: "std,general,company,project,nonblank,blanked,dotted",
-			wantChange:   true,
-			wantErr:      false,
-		},
 		"blank general import is integrated before later project group": {
 			projectName: testProjectName,
 			filePath:    testFilePath,

@@ -20,9 +20,6 @@ const (
 	// BlankedImportsOrder is accepted for compatibility and ignored during
 	// grouping; blank imports are grouped by package path.
 	BlankedImportsOrder = internalengine.BlankedImportsOrder
-	// NonBlankImportsOrder is accepted as an explicit no-op; non-blank
-	// imports are grouped by package path through the standard categories.
-	NonBlankImportsOrder = internalengine.NonBlankImportsOrder
 	// DottedImportsOrder is separate group for "." imports.
 	DottedImportsOrder = internalengine.DottedImportsOrder
 )

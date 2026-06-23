@@ -21,9 +21,6 @@ const (
 	// BlankedImportsOrder is accepted for compatibility and ignored during
 	// grouping; blank imports are grouped by package path.
 	BlankedImportsOrder ImportsOrder = "blanked"
-	// NonBlankImportsOrder is accepted as an explicit no-op; non-blank
-	// imports are grouped by package path through the standard categories.
-	NonBlankImportsOrder ImportsOrder = "nonblank"
 	// DottedImportsOrder is separate group for "." imports
 	DottedImportsOrder ImportsOrder = "dotted"
 )
@@ -55,10 +52,6 @@ func (o ImportsOrders) sortImportsByOrder(importGroups *groupsImports) [][]strin
 		case BlankedImportsOrder:
 			// BlankedImportsOrder is accepted for configuration compatibility,
 			// but blank imports are grouped by package path.
-			continue
-		case NonBlankImportsOrder:
-			// NonBlankImportsOrder is an explicit no-op: non-blank imports
-			// are already emitted by std/general/company/project groups.
 			continue
 		case DottedImportsOrder:
 			imports = importGroups.dotted
@@ -110,7 +103,7 @@ func StringToImportsOrders(s string) (ImportsOrders, error) {
 		group := ImportsOrder(strings.TrimSpace(g))
 		switch group {
 		case StdImportsOrder, CompanyImportsOrder, ProjectImportsOrder,
-			GeneralImportsOrder, BlankedImportsOrder, NonBlankImportsOrder, DottedImportsOrder:
+			GeneralImportsOrder, BlankedImportsOrder, DottedImportsOrder:
 		default:
 			return nil, fmt.Errorf(`unknown order group type: %q`, group)
 		}

@@ -55,7 +55,6 @@ Usage of goimports-rereviser:
     	company - inter-org or your company libs(if you set '-company-prefixes'-option, then 4th group will be split separately. In other case, it will be the part of general purpose libs).
     	project - your local project dependencies.
 	blanked - accepted for compatibility and ignored; blank imports are grouped by package path.
-	nonblank - accepted as an explicit no-op; non-blank imports are already grouped by package path.
     	dotted - imports with "." alias. (default "std,general,company,project")
   -list-diff
     	Option will list files whose formatting differs from goimports-rereviser. Optional parameter.
@@ -159,12 +158,11 @@ import (
 )
 ```
 
-### Example with `-imports-order std,general,company,project,nonblank,blanked,dotted`-option
+### Example with `-imports-order std,general,company,project,blanked,dotted`-option
 
-The `blanked` option is accepted for compatibility and ignored for grouping. The `nonblank`
-option is accepted as an explicit no-op because non-blank imports are already grouped by package
-path. Blank imports remain in their package-path group, so `_ "embed"` stays with
-standard-library imports and `_ "github.com/pkg1"` stays with general imports.
+The `blanked` option is accepted for compatibility and ignored for grouping. Blank imports
+remain in their package-path group, so `_ "embed"` stays with standard-library imports and
+`_ "github.com/pkg1"` stays with general imports.
 
 Before usage:
 

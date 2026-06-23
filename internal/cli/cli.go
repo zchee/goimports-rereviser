@@ -70,7 +70,6 @@ general - libs for general purpose.
 company - inter-org or your company libs(if you set '-company-prefixes'-option, then 4th group will be split separately. In other case, it will be the part of general purpose libs).
 project - your local project dependencies.
 blanked - accepted for compatibility and ignored; blank imports are grouped by package path.
-nonblank - accepted as an explicit no-op; non-blank imports are already grouped by package path.
 dotted - imports with "." alias.
 `,
 	)

@@ -41,7 +41,7 @@ func TestStringToImportsOrder(t *testing.T) {
 func TestStringToImportsOrdersAcceptsNoopGroups(t *testing.T) {
 	t.Parallel()
 
-	got, err := StringToImportsOrders("std,general,company,project,nonblank,blanked,dotted")
+	got, err := StringToImportsOrders("std,general,company,project,blanked,dotted")
 	if err != nil {
 		t.Fatalf("StringToImportsOrders returned error: %v", err)
 	}
@@ -51,7 +51,6 @@ func TestStringToImportsOrdersAcceptsNoopGroups(t *testing.T) {
 		GeneralImportsOrder,
 		CompanyImportsOrder,
 		ProjectImportsOrder,
-		NonBlankImportsOrder,
 		BlankedImportsOrder,
 		DottedImportsOrder,
 	}
