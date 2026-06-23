@@ -70,7 +70,8 @@ general - libs for general purpose.
 company - inter-org or your company libs(if you set '-company-prefixes'-option, then 4th group will be split separately. In other case, it will be the part of general purpose libs).
 project - your local project dependencies.
 blanked - imports with "_" alias, except blank imports with inline linkname comments.
-dotted - imports with "." alias.`,
+dotted - imports with "." alias.
+`,
 	)
 	flag.BoolVar(&cfg.listFileName, "list-diff", false, `Option will list files whose formatting differs from goimports-reengine. Optional parameter.`)
 	flag.BoolVar(&cfg.setExitStatus, "set-exit-status", false, `set the exit status to 1 if a change is needed/made. Optional parameter.`)
