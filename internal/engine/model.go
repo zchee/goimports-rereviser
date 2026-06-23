@@ -2,8 +2,7 @@ package engine
 
 type groupsImports struct {
 	*common
-	blanked []string
-	dotted  []string
+	dotted []string
 }
 
 type common struct {

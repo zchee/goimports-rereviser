@@ -182,16 +182,13 @@ func (f *SourceFile) groupImports(
 		namedProjectImports   []string
 		namedProjectLocalPkgs []string
 		namedGeneralImports   []string
-		blankedImports        []string
 		dottedImports         []string
 	)
 
 	for imprt := range importsWithMetadata {
-		classified := classifyImport(projectName, localPkgPrefixes, f.importsOrders, f.shouldSeparateNamedImports, imprt, importsWithMetadata[imprt])
+		classified := classifyImport(projectName, localPkgPrefixes, f.importsOrders, f.shouldSeparateNamedImports, imprt)
 
 		switch classified.bucket {
-		case importBucketBlanked:
-			blankedImports = append(blankedImports, imprt)
 		case importBucketDotted:
 			dottedImports = append(dottedImports, imprt)
 		case importBucketStd:
@@ -225,7 +222,6 @@ func (f *SourceFile) groupImports(
 	slices.Sort(generalImports)
 	slices.Sort(projectLocalPkgs)
 	slices.Sort(projectImports)
-	slices.Sort(blankedImports)
 	slices.Sort(dottedImports)
 	slices.Sort(namedStdImports)
 	slices.Sort(namedGeneralImports)
@@ -243,18 +239,16 @@ func (f *SourceFile) groupImports(
 			project:      projectImports,
 			namedProject: namedProjectImports,
 		},
-		blanked: blankedImports,
-		dotted:  dottedImports,
+		dotted: dottedImports,
 	}
 	return result
 }
 
 // linknameBlankCommentMarkerRe matches inline comments that mark a blank
 // import (`_ "path"`) as a go:linkname support import. Imports tagged this
-// way are classified by their package path (std/general/company/project)
-// instead of being collected into the blanked group, because they belong next
-// to the std/general/etc imports they support rather than to the generic
-// side-effect blank-import group.
+// way are exempt from side-effect blank-import separation, because they belong
+// next to the std/general/etc imports they support rather than to the generic
+// side-effect blank-import subgroup.
 //
 // Detection is intentionally scoped to line comments that mention linkname.
 // Block comments (`/* for go:linkname */`) are not matched; the //go:linkname
@@ -459,31 +453,63 @@ func addSideEffectSeparators(importGroups [][]string, commentsMetadata map[strin
 			continue
 		}
 
-		var nonBlanked, blanked []string
-		for _, imprt := range group {
-			if strings.HasPrefix(imprt, "_") && !isLinknameBlankImport(imprt, commentsMetadata[imprt]) {
-				blanked = append(blanked, imprt)
-				continue
-			}
+		result[idx] = addSideEffectSeparatorsToGroup(group, commentsMetadata)
+	}
 
-			nonBlanked = append(nonBlanked, imprt)
+	return result
+}
+
+func addSideEffectSeparatorsToGroup(group []string, commentsMetadata map[string]*commentsMetadata) []string {
+	if !slices.Contains(group, "\n") {
+		return separateSideEffectImports(group, commentsMetadata)
+	}
+
+	result := make([]string, 0, len(group)+1)
+	segment := make([]string, 0, len(group))
+	flushSegment := func() {
+		if len(segment) == 0 {
+			return
 		}
+		result = append(result, separateSideEffectImports(segment, commentsMetadata)...)
+		segment = segment[:0]
+	}
 
-		if len(blanked) == 0 || len(nonBlanked) == 0 {
-			result[idx] = group
+	for _, imprt := range group {
+		if imprt == "\n" {
+			flushSegment()
+			result = append(result, imprt)
 
 			continue
 		}
 
-		newGroup := make([]string, 0, len(group)+1)
-		newGroup = append(newGroup, nonBlanked...)
-		newGroup = append(newGroup, "")
-		newGroup = append(newGroup, blanked...)
-
-		result[idx] = newGroup
+		segment = append(segment, imprt)
 	}
+	flushSegment()
 
 	return result
+}
+
+func separateSideEffectImports(imports []string, commentsMetadata map[string]*commentsMetadata) []string {
+	var nonBlanked, blanked []string
+	for _, imprt := range imports {
+		if strings.HasPrefix(imprt, "_ ") && !isLinknameBlankImport(imprt, commentsMetadata[imprt]) {
+			blanked = append(blanked, imprt)
+			continue
+		}
+
+		nonBlanked = append(nonBlanked, imprt)
+	}
+
+	if len(blanked) == 0 || len(nonBlanked) == 0 {
+		return imports
+	}
+
+	newGroup := make([]string, 0, len(imports)+1)
+	newGroup = append(newGroup, nonBlanked...)
+	newGroup = append(newGroup, "")
+	newGroup = append(newGroup, blanked...)
+
+	return newGroup
 }
 
 func clearImportDocs(f *ast.File, importsPositions []*importPosition) {

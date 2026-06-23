@@ -38,6 +38,28 @@ func TestStringToImportsOrder(t *testing.T) {
 	}
 }
 
+func TestStringToImportsOrdersAcceptsNoopGroups(t *testing.T) {
+	t.Parallel()
+
+	got, err := StringToImportsOrders("std,general,company,project,nonblank,blanked,dotted")
+	if err != nil {
+		t.Fatalf("StringToImportsOrders returned error: %v", err)
+	}
+
+	want := ImportsOrders{
+		StdImportsOrder,
+		GeneralImportsOrder,
+		CompanyImportsOrder,
+		ProjectImportsOrder,
+		NonBlankImportsOrder,
+		BlankedImportsOrder,
+		DottedImportsOrder,
+	}
+	if diff := gocmp.Diff(want, got); diff != "" {
+		t.Fatalf("StringToImportsOrders mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestUnique_Deduplicates(t *testing.T) {
 	t.Parallel()
 

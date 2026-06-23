@@ -166,6 +166,55 @@ func TestIsLinknameBlankImport(t *testing.T) {
 	})
 }
 
+func TestSeparateSideEffectImports(t *testing.T) {
+	tests := map[string]struct {
+		imports []string
+		meta    map[string]*commentsMetadata
+		want    []string
+	}{
+		"separates ordinary blank import after regular imports": {
+			imports: []string{`"fmt"`, `_ "embed"`},
+			want:    []string{`"fmt"`, "", `_ "embed"`},
+		},
+		"keeps all blank imports together when no regular imports exist": {
+			imports: []string{`_ "embed"`, `_ "github.com/lib/pq"`},
+			want:    []string{`_ "embed"`, `_ "github.com/lib/pq"`},
+		},
+		"keeps linkname blank imports with regular imports": {
+			imports: []string{`"fmt"`, `_ "unsafe"`},
+			meta: map[string]*commentsMetadata{
+				`_ "unsafe"`: {
+					Comment: &ast.CommentGroup{List: []*ast.Comment{{Text: "// for go:linkname"}}},
+				},
+			},
+			want: []string{`"fmt"`, `_ "unsafe"`},
+		},
+		"keeps underscore-prefixed named aliases with regular imports": {
+			imports: []string{`"fmt"`, `_foo "github.com/acme/foo"`},
+			want:    []string{`"fmt"`, `_foo "github.com/acme/foo"`},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := separateSideEffectImports(tt.imports, tt.meta)
+			if diff := gocmp.Diff(tt.want, got); diff != "" {
+				t.Fatalf("separateSideEffectImports mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestAddSideEffectSeparatorsToGroupPreservesNamedSeparator(t *testing.T) {
+	group := []string{`"fmt"`, `_ "embed"`, "\n", "\n", `json "encoding/json"`}
+	want := []string{`"fmt"`, "", `_ "embed"`, "\n", "\n", `json "encoding/json"`}
+
+	got := addSideEffectSeparatorsToGroup(group, nil)
+	if diff := gocmp.Diff(want, got); diff != "" {
+		t.Fatalf("addSideEffectSeparatorsToGroup mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestSourceFile_Fix(t *testing.T) {
 	tests := map[string]struct {
 		projectName string
@@ -988,7 +1037,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	_ "fmt"
+	_ "embed"
 )
 
 // nolint:gomnd
@@ -1003,7 +1052,7 @@ import (
 	"bytes"
 	"log"
 
-	_ "fmt"
+	_ "embed"
 
 	. "io"
 )
@@ -1070,7 +1119,7 @@ import (
 			wantChange:   true,
 			wantErr:      false,
 		},
-		"blank import without linkname marker is routed to blanked group": {
+		"blank std import without linkname marker ignores blanked order": {
 			projectName: testProjectName,
 			filePath:    testFilePath,
 			archive: `
@@ -1078,9 +1127,11 @@ import (
 package testdata
 
 import (
-	_ "unsafe" // pulls in side effects
+	_ "embed"
 
 	"fmt"
+
+	"golang.org/x/tools/go/packages"
 )
 -- want.go --
 package testdata
@@ -1088,7 +1139,71 @@ package testdata
 import (
 	"fmt"
 
-	_ "unsafe" // pulls in side effects
+	_ "embed"
+
+	"golang.org/x/tools/go/packages"
+)
+`,
+			importsOrder: "std,general,company,project,blanked,dotted",
+			wantChange:   true,
+			wantErr:      false,
+		},
+		"nonblank option is accepted and ignored": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	_ "embed"
+
+	"fmt"
+
+	"golang.org/x/tools/go/packages"
+)
+-- want.go --
+package testdata
+
+import (
+	"fmt"
+
+	_ "embed"
+
+	"golang.org/x/tools/go/packages"
+)
+`,
+			importsOrder: "std,general,company,project,nonblank,blanked,dotted",
+			wantChange:   true,
+			wantErr:      false,
+		},
+		"blank general import is integrated before later project group": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	"github.com/zchee/goimports-rereviser/testdata/innderpkg"
+
+	_ "github.com/other/sideeffect"
+
+	"fmt"
+
+	"golang.org/x/tools/go/packages"
+)
+-- want.go --
+package testdata
+
+import (
+	"fmt"
+
+	"golang.org/x/tools/go/packages"
+
+	_ "github.com/other/sideeffect"
+
+	"github.com/zchee/goimports-rereviser/testdata/innderpkg"
 )
 `,
 			importsOrder: "std,general,company,project,blanked,dotted",
@@ -2289,6 +2404,60 @@ import (
 	_ "unsafe" // for go:linkname
 
 	js "encoding/json"
+)
+`,
+			wantChange: true,
+			wantErr:    false,
+		},
+		"ordinary blank import stays in path group before named subgroup": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	_ "embed"
+	"fmt"
+	js "encoding/json"
+	by "bytes"
+)
+-- want.go --
+package testdata
+
+import (
+	"fmt"
+
+	_ "embed"
+
+	by "bytes"
+	js "encoding/json"
+)
+`,
+			wantChange: true,
+			wantErr:    false,
+		},
+		"underscore-prefixed named alias stays in named subgroup": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	_foo "github.com/acme/foo"
+	"fmt"
+	_ "embed"
+)
+-- want.go --
+package testdata
+
+import (
+	"fmt"
+
+	_ "embed"
+
+	_foo "github.com/acme/foo"
 )
 `,
 			wantChange: true,

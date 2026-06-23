@@ -1,9 +1,6 @@
 package engine
 
-import (
-	"go/ast"
-	"testing"
-)
+import "testing"
 
 func TestClassifyImport(t *testing.T) {
 	tests := []struct {
@@ -13,24 +10,50 @@ func TestClassifyImport(t *testing.T) {
 		importsOrders ImportsOrders
 		separateNamed bool
 		importPath    string
-		meta          *commentsMetadata
 		wantBucket    importBucket
 		wantNamed     bool
 	}{
 		{
-			name:          "blank import goes to blanked bucket when enabled",
+			name:          "blank standard import ignores blanked bucket when enabled",
 			importsOrders: ImportsOrders{StdImportsOrder, GeneralImportsOrder, CompanyImportsOrder, ProjectImportsOrder, BlankedImportsOrder},
-			importPath:    `_ "fmt"`,
-			wantBucket:    importBucketBlanked,
+			importPath:    `_ "embed"`,
+			wantBucket:    importBucketStd,
 		},
 		{
-			name:          "linkname blank import stays in standard bucket",
+			name:          "blank standard import is not treated as named",
+			importsOrders: ImportsOrders{StdImportsOrder, GeneralImportsOrder, CompanyImportsOrder, ProjectImportsOrder, BlankedImportsOrder},
+			separateNamed: true,
+			importPath:    `_ "embed"`,
+			wantBucket:    importBucketStd,
+		},
+		{
+			name:          "blank general import ignores blanked bucket when enabled",
+			projectName:   "github.com/acme/project",
+			importsOrders: ImportsOrders{StdImportsOrder, GeneralImportsOrder, CompanyImportsOrder, ProjectImportsOrder, BlankedImportsOrder},
+			importPath:    `_ "github.com/other/pkg"`,
+			wantBucket:    importBucketGeneral,
+		},
+		{
+			name:          "blank company import ignores blanked bucket when enabled",
+			projectName:   "github.com/acme/project",
+			localPrefixes: []string{"github.com/acme/"},
+			importsOrders: ImportsOrders{StdImportsOrder, GeneralImportsOrder, CompanyImportsOrder, ProjectImportsOrder, BlankedImportsOrder},
+			importPath:    `_ "github.com/acme/lib/pkg"`,
+			wantBucket:    importBucketCompany,
+		},
+		{
+			name:          "blank project import ignores blanked bucket when enabled",
+			projectName:   "github.com/acme/project",
+			localPrefixes: []string{"github.com/acme/"},
+			importsOrders: ImportsOrders{StdImportsOrder, GeneralImportsOrder, CompanyImportsOrder, ProjectImportsOrder, BlankedImportsOrder},
+			importPath:    `_ "github.com/acme/project/internal/pkg"`,
+			wantBucket:    importBucketProject,
+		},
+		{
+			name:          "linkname blank import is path classified in standard bucket",
 			importsOrders: ImportsOrders{StdImportsOrder, GeneralImportsOrder, CompanyImportsOrder, ProjectImportsOrder, BlankedImportsOrder},
 			importPath:    `_ "unsafe"`,
-			meta: &commentsMetadata{
-				Comment: &ast.CommentGroup{List: []*ast.Comment{{Text: "// for go:linkname"}}},
-			},
-			wantBucket: importBucketStd,
+			wantBucket:    importBucketStd,
 		},
 		{
 			name:          "stdlib named import is tracked separately",
@@ -67,7 +90,7 @@ func TestClassifyImport(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := classifyImport(tt.projectName, tt.localPrefixes, tt.importsOrders, tt.separateNamed, tt.importPath, tt.meta)
+			got := classifyImport(tt.projectName, tt.localPrefixes, tt.importsOrders, tt.separateNamed, tt.importPath)
 			if got.bucket != tt.wantBucket {
 				t.Fatalf("bucket = %v, want %v", got.bucket, tt.wantBucket)
 			}
@@ -83,7 +106,7 @@ func TestClassifyImportNamedDetectionDoesNotAllocate(t *testing.T) {
 
 	var got classifiedImport
 	allocs := testing.AllocsPerRun(1000, func() {
-		got = classifyImport("", nil, importsOrders, true, `fmt "fmt"`, nil)
+		got = classifyImport("", nil, importsOrders, true, `fmt "fmt"`)
 	})
 
 	if got.bucket != importBucketStd || !got.named {

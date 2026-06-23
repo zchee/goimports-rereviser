@@ -17,8 +17,12 @@ const (
 	// GeneralImportsOrder is packages that are outside. In other words it is
 	// general purpose libraries.
 	GeneralImportsOrder = internalengine.GeneralImportsOrder
-	// BlankedImportsOrder is separate group for "_" imports.
+	// BlankedImportsOrder is accepted for compatibility and ignored during
+	// grouping; blank imports are grouped by package path.
 	BlankedImportsOrder = internalengine.BlankedImportsOrder
+	// NonBlankImportsOrder is accepted as an explicit no-op; non-blank
+	// imports are grouped by package path through the standard categories.
+	NonBlankImportsOrder = internalengine.NonBlankImportsOrder
 	// DottedImportsOrder is separate group for "." imports.
 	DottedImportsOrder = internalengine.DottedImportsOrder
 )

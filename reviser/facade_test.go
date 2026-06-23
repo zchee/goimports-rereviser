@@ -7,12 +7,15 @@ import (
 )
 
 func TestFacadeExportsCompile(t *testing.T) {
-	orders, err := reviser.StringToImportsOrders("std,general,company,project")
+	orders, err := reviser.StringToImportsOrders("std,general,company,project,nonblank")
 	if err != nil {
 		t.Fatalf("StringToImportsOrders returned error: %v", err)
 	}
-	if len(orders) != 4 {
-		t.Fatalf("expected 4 import groups, got %d", len(orders))
+	if len(orders) != 5 {
+		t.Fatalf("expected 5 import groups, got %d", len(orders))
+	}
+	if orders[4] != reviser.NonBlankImportsOrder {
+		t.Fatalf("expected nonblank order at index 4, got %q", orders[4])
 	}
 
 	file := reviser.NewSourceFile("github.com/example/project", reviser.StandardInput)

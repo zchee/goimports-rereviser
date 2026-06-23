@@ -69,7 +69,8 @@ std - std import group.
 general - libs for general purpose.
 company - inter-org or your company libs(if you set '-company-prefixes'-option, then 4th group will be split separately. In other case, it will be the part of general purpose libs).
 project - your local project dependencies.
-blanked - imports with "_" alias, except blank imports with inline linkname comments.
+blanked - accepted for compatibility and ignored; blank imports are grouped by package path.
+nonblank - accepted as an explicit no-op; non-blank imports are already grouped by package path.
 dotted - imports with "." alias.
 `,
 	)
@@ -351,7 +352,7 @@ func defaultCacheDir() (string, error) {
 
 func formatterCacheFingerprint(cfg *Config, projectName string) string {
 	return fmt.Sprintf(
-		"v1|project=%s|imports-order=%s|company-prefixes=%s|rm-unused=%t|set-alias=%t|format=%t|separate-named=%t|apply-generated=%t",
+		"v2|project=%s|imports-order=%s|company-prefixes=%s|rm-unused=%t|set-alias=%t|format=%t|separate-named=%t|apply-generated=%t",
 		projectName,
 		cfg.importsOrder,
 		cfg.companyPkgPrefixes,

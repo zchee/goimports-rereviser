@@ -13,7 +13,6 @@ const (
 	importBucketStd
 	importBucketCompany
 	importBucketProject
-	importBucketBlanked
 	importBucketDotted
 )
 
@@ -28,19 +27,14 @@ func classifyImport(
 	importsOrders ImportsOrders,
 	separateNamed bool,
 	imprt string,
-	meta *commentsMetadata,
 ) classifiedImport {
-	isLinknameBlank := isLinknameBlankImport(imprt, meta)
-	if importsOrders.hasBlankedImportOrder() && strings.HasPrefix(imprt, "_") && !isLinknameBlank {
-		return classifiedImport{bucket: importBucketBlanked}
-	}
-
 	if importsOrders.hasDottedImportOrder() && strings.HasPrefix(imprt, ".") {
 		return classifiedImport{bucket: importBucketDotted}
 	}
 
 	pkgWithoutAlias := skipPackageAlias(imprt)
-	isNamed := separateNamed && !isLinknameBlank && strings.Contains(imprt, " ")
+	isBlank := strings.HasPrefix(imprt, "_ ")
+	isNamed := separateNamed && !isBlank && strings.Contains(imprt, " ")
 
 	if _, ok := std.StdPackages[pkgWithoutAlias]; ok {
 		return classifiedImport{bucket: importBucketStd, named: isNamed}

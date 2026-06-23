@@ -18,8 +18,12 @@ const (
 	ProjectImportsOrder ImportsOrder = "project"
 	// GeneralImportsOrder is packages that are outside. In other words it is general purpose libraries
 	GeneralImportsOrder ImportsOrder = "general"
-	// BlankedImportsOrder is separate group for "_" imports
+	// BlankedImportsOrder is accepted for compatibility and ignored during
+	// grouping; blank imports are grouped by package path.
 	BlankedImportsOrder ImportsOrder = "blanked"
+	// NonBlankImportsOrder is accepted as an explicit no-op; non-blank
+	// imports are grouped by package path through the standard categories.
+	NonBlankImportsOrder ImportsOrder = "nonblank"
 	// DottedImportsOrder is separate group for "." imports
 	DottedImportsOrder ImportsOrder = "dotted"
 )
@@ -49,7 +53,13 @@ func (o ImportsOrders) sortImportsByOrder(importGroups *groupsImports) [][]strin
 		case ProjectImportsOrder:
 			imports = appendGroups(importGroups.project, importGroups.namedProject)
 		case BlankedImportsOrder:
-			imports = importGroups.blanked
+			// BlankedImportsOrder is accepted for configuration compatibility,
+			// but blank imports are grouped by package path.
+			continue
+		case NonBlankImportsOrder:
+			// NonBlankImportsOrder is an explicit no-op: non-blank imports
+			// are already emitted by std/general/company/project groups.
+			continue
 		case DottedImportsOrder:
 			imports = importGroups.dotted
 		}
@@ -58,10 +68,6 @@ func (o ImportsOrders) sortImportsByOrder(importGroups *groupsImports) [][]strin
 	}
 
 	return result
-}
-
-func (o ImportsOrders) hasBlankedImportOrder() bool {
-	return slices.Contains(o, BlankedImportsOrder)
 }
 
 func (o ImportsOrders) hasDottedImportOrder() bool {
@@ -104,7 +110,7 @@ func StringToImportsOrders(s string) (ImportsOrders, error) {
 		group := ImportsOrder(strings.TrimSpace(g))
 		switch group {
 		case StdImportsOrder, CompanyImportsOrder, ProjectImportsOrder,
-			GeneralImportsOrder, BlankedImportsOrder, DottedImportsOrder:
+			GeneralImportsOrder, BlankedImportsOrder, NonBlankImportsOrder, DottedImportsOrder:
 		default:
 			return nil, fmt.Errorf(`unknown order group type: %q`, group)
 		}

@@ -54,7 +54,8 @@ Usage of goimports-rereviser:
     	general - libs for general purpose.
     	company - inter-org or your company libs(if you set '-company-prefixes'-option, then 4th group will be split separately. In other case, it will be the part of general purpose libs).
     	project - your local project dependencies.
-    	blanked - imports with "_" alias, except blank imports with inline linkname comments.
+	blanked - accepted for compatibility and ignored; blank imports are grouped by package path.
+	nonblank - accepted as an explicit no-op; non-blank imports are already grouped by package path.
     	dotted - imports with "." alias. (default "std,general,company,project")
   -list-diff
     	Option will list files whose formatting differs from goimports-rereviser. Optional parameter.
@@ -158,11 +159,12 @@ import (
 )
 ```
 
-### Example with `-imports-order std,general,company,project,blanked,dotted`-option
+### Example with `-imports-order std,general,company,project,nonblank,blanked,dotted`-option
 
-Blank imports with inline comments that mention `linkname`, such as `_ "unsafe" // for go:linkname`,
-remain in their package-path group. They are not moved to the `blanked` group or separated from the
-standard-library imports they support.
+The `blanked` option is accepted for compatibility and ignored for grouping. The `nonblank`
+option is accepted as an explicit no-op because non-blank imports are already grouped by package
+path. Blank imports remain in their package-path group, so `_ "embed"` stays with
+standard-library imports and `_ "github.com/pkg1"` stays with general imports.
 
 Before usage:
 
@@ -170,6 +172,7 @@ Before usage:
 package testdata // goimports-rereviser/testdata
 
 import (
+	_ "embed"
 	_ "github.com/pkg1"
 	. "github.com/pkg2"
 	"fmt" //fmt package
@@ -186,13 +189,15 @@ package testdata // goimports-rereviser/testdata
 import (
 	"fmt" // fmt package
 
+	_ "embed"
+
 	"golang.org/x/tools/go/packages" // custom package
+
+	_ "github.com/pkg1"
 
 	"github.com/zchee/goimports-rereviser/v4/pkg" // this is a company package which is not a part of the project, but is a part of your organization
 
 	"goimports-rereviser/pkg"
-
-	_ "github.com/pkg1"
 
 	. "github.com/pkg2"
 )
