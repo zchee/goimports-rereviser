@@ -219,15 +219,31 @@ func (f *SourceFile) groupImports(
 		}
 	}
 
-	slices.Sort(stdImports)
-	slices.Sort(generalImports)
-	slices.Sort(projectLocalPkgs)
-	slices.Sort(projectImports)
-	slices.Sort(dottedImports)
-	slices.Sort(namedStdImports)
-	slices.Sort(namedGeneralImports)
-	slices.Sort(namedProjectLocalPkgs)
-	slices.Sort(namedProjectImports)
+	// Sort by package path first, falling back to the full raw spec on ties.
+	// The path-primary key matches how go/format orders a contiguous import
+	// block, so the engine's output is already gofmt-canonical; this matters
+	// because Fix only runs go/format.Source when its generated content differs
+	// from the original (see Fix's importsChanged gate). A plain slices.Sort on
+	// the raw spec would order every blank import (`_ "path"`) after every plain
+	// one (`_` 0x5f > `"` 0x22); a file already in that byte order would then
+	// match the engine output, skip the go/format pass, and be left with blanks
+	// misplaced. The raw-spec tiebreak keeps the comparator total and
+	// deterministic for same-path, different-alias specs.
+	compareImports := func(a, b string) int {
+		if c := strings.Compare(skipPackageAlias(a), skipPackageAlias(b)); c != 0 {
+			return c
+		}
+		return strings.Compare(a, b)
+	}
+	slices.SortFunc(stdImports, compareImports)
+	slices.SortFunc(generalImports, compareImports)
+	slices.SortFunc(projectLocalPkgs, compareImports)
+	slices.SortFunc(projectImports, compareImports)
+	slices.SortFunc(dottedImports, compareImports)
+	slices.SortFunc(namedStdImports, compareImports)
+	slices.SortFunc(namedGeneralImports, compareImports)
+	slices.SortFunc(namedProjectLocalPkgs, compareImports)
+	slices.SortFunc(namedProjectImports, compareImports)
 
 	result := &groupsImports{
 		common: &common{

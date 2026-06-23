@@ -2523,6 +2523,61 @@ import (
 			wantChange: false,
 			wantErr:    false,
 		},
+		// Regression: input is already in raw-byte-sorted order (`_ "embed"`
+		// sorts AFTER `"errors"` because `_` 0x5f > `"` 0x22). Before the
+		// path-primary comparator, the engine produced that same byte order,
+		// matched the input, skipped the go/format pass via Fix's importsChanged
+		// gate, and left the blank import misplaced. Sorting by package path now
+		// reorders it, so the file changes and ends up gofmt-canonical.
+		"blank import interleaves inline by package path among std imports": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	"errors"
+	"fmt"
+	_ "embed"
+)
+-- want.go --
+package testdata
+
+import (
+	_ "embed"
+	"errors"
+	"fmt"
+)
+`,
+			wantChange: true,
+			wantErr:    false,
+		},
+		// Same package path, different alias: locks in gofmt's deterministic
+		// tie-break (plain spec before the blank alias) and documents why the
+		// engine must not switch to a package-path-only, non-total comparator.
+		"same path plain and blank import order deterministically": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	_ "unsafe"
+	"unsafe"
+)
+-- want.go --
+package testdata
+
+import (
+	"unsafe"
+	_ "unsafe"
+)
+`,
+			wantChange: true,
+			wantErr:    false,
+		},
 	}
 
 	for name, tt := range tests {
