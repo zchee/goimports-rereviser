@@ -91,6 +91,12 @@ func WithSeparatedNamedImports(f *SourceFile) error {
 	return internalengine.WithSeparatedNamedImports(f)
 }
 
+// WithSkipBlanked keeps ordinary side-effect blank imports sorted inline within
+// their package-path group instead of separating them into a trailing sub-block.
+func WithSkipBlanked(f *SourceFile) error {
+	return internalengine.WithSkipBlanked(f)
+}
+
 // StringToImportsOrders converts a comma-separated import-order string into
 // ImportsOrders. Default value for empty string is
 // "std,general,company,project".

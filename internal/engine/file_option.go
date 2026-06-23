@@ -58,3 +58,12 @@ func WithSeparatedNamedImports(f *SourceFile) error {
 	f.shouldSeparateNamedImports = true
 	return nil
 }
+
+// WithSkipBlanked keeps ordinary side-effect blank imports (`_ "path"`) sorted
+// inline within their package-path group instead of separating them into a
+// trailing sub-block. It disables the default side-effect separation pass, so
+// blank imports are ordered by package path like any other import.
+func WithSkipBlanked(f *SourceFile) error {
+	f.shouldSkipBlanked = true
+	return nil
+}

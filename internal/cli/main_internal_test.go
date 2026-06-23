@@ -852,20 +852,24 @@ func main() { _ = errors.New(""); _ = fmt.Sprint("") }
 
 func TestFormatterCacheFingerprintVersion(t *testing.T) {
 	cfg := &Config{
-		importsOrder:                "std,general,company,project,nonblank,blanked,dotted",
+		importsOrder:                "std,general,company,project,blanked,dotted",
 		companyPkgPrefixes:          "github.com/acme/",
 		shouldRemoveUnusedImports:   true,
 		shouldSetAlias:              true,
 		shouldFormat:                true,
 		shouldSeparateNamedImports:  true,
+		shouldSkipBlanked:           true,
 		shouldApplyToGeneratedFiles: true,
 	}
 
 	got := formatterCacheFingerprint(cfg, "github.com/acme/project")
-	if !strings.HasPrefix(got, "v2|") {
-		t.Fatalf("formatterCacheFingerprint version = %q, want v2 prefix", got)
+	if !strings.HasPrefix(got, "v3|") {
+		t.Fatalf("formatterCacheFingerprint version = %q, want v3 prefix", got)
 	}
-	if !strings.Contains(got, "imports-order=std,general,company,project,nonblank,blanked,dotted") {
+	if !strings.Contains(got, "skip-blanked=true") {
+		t.Fatalf("formatterCacheFingerprint lost skip-blanked flag: %q", got)
+	}
+	if !strings.Contains(got, "imports-order=std,general,company,project,blanked,dotted") {
 		t.Fatalf("formatterCacheFingerprint lost imports order: %q", got)
 	}
 }

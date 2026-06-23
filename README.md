@@ -72,6 +72,8 @@ Usage of goimports-rereviser:
     	Set alias for versioned package names, like 'github.com/go-pg/pg/v9'. In this case import will be set as 'pg \"github.com/go-pg/pg/v9\"'. Optional parameter.
   -set-exit-status
     	set the exit status to 1 if a change is needed/made. Optional parameter.
+  -skip-blanked
+    	Option will keep side-effect blank imports ('_ "path"') sorted inline within their package-path group instead of separating them into a trailing sub-block. Optional parameter.
   -use-cache
     	Use cache to improve performance. Optional parameter.
   -version
@@ -251,5 +253,34 @@ import (
 
 	extpkg "google.com/golang/pkg"
 	extslice "github.com/PeterRK/slices"
+)
+```
+
+### Example with `-skip-blanked`-option
+
+By default, side-effect blank imports (`_ "path"`) are separated into a trailing
+sub-block within their group. The `-skip-blanked`-option disables that separation,
+so blank imports are sorted inline by package path like any other import.
+
+Before usage:
+
+```go
+package testdata // goimports-rereviser/testdata
+
+import (
+	"os"
+	_ "embed"
+	"fmt"
+)
+```
+
+After usage:
+```go
+package testdata // goimports-rereviser/testdata
+
+import (
+	_ "embed"
+	"fmt"
+	"os"
 )
 ```

@@ -2443,3 +2443,92 @@ import (
 		})
 	}
 }
+
+func TestSourceFile_Fix_WithSkipBlanked(t *testing.T) {
+	tests := map[string]struct {
+		projectName string
+		filePath    string
+		archive     string
+		wantChange  bool
+		wantErr     bool
+	}{
+		"blank std import sorts inline instead of trailing sub-block": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	"os"
+	_ "embed"
+	"fmt"
+)
+-- want.go --
+package testdata
+
+import (
+	_ "embed"
+	"fmt"
+	"os"
+)
+`,
+			wantChange: true,
+			wantErr:    false,
+		},
+		"blank general import sorts inline within general group": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	"fmt"
+	_ "github.com/other/sideeffect"
+	"golang.org/x/tools/go/packages"
+)
+-- want.go --
+package testdata
+
+import (
+	"fmt"
+
+	_ "github.com/other/sideeffect"
+	"golang.org/x/tools/go/packages"
+)
+`,
+			wantChange: true,
+			wantErr:    false,
+		},
+		"linkname blank import stays inline with std": {
+			projectName: testProjectName,
+			filePath:    testFilePath,
+			archive: `
+-- input.go --
+package testdata
+
+import (
+	"fmt"
+	_ "unsafe" // for go:linkname
+)
+-- want.go --
+package testdata
+
+import (
+	"fmt"
+	_ "unsafe" // for go:linkname
+)
+`,
+			wantChange: false,
+			wantErr:    false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			filePath := filepath.Join(t.TempDir(), "example.go")
+			runFixCase(t, tt.projectName, filePath, tt.archive, tt.wantChange, tt.wantErr, WithSkipBlanked)
+		})
+	}
+}

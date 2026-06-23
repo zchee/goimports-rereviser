@@ -53,6 +53,7 @@ type Config struct {
 	shouldSetAlias              bool
 	shouldFormat                bool
 	shouldSeparateNamedImports  bool
+	shouldSkipBlanked           bool
 	shouldApplyToGeneratedFiles bool
 }
 
@@ -83,6 +84,7 @@ dotted - imports with "." alias.
 	flag.BoolVar(&cfg.shouldSetAlias, "set-alias", false, `Set alias for versioned package names, like 'github.com/go-pg/pg/v9'. In this case import will be set as 'pg \"github.com/go-pg/pg/v9\"'. Optional parameter.`)
 	flag.BoolVar(&cfg.shouldFormat, "format", false, `Option will perform additional formatting. Optional parameter.`)
 	flag.BoolVar(&cfg.shouldSeparateNamedImports, "separate-named", false, `Option will separate named imports from the rest of the imports, per group. Optional parameter.`)
+	flag.BoolVar(&cfg.shouldSkipBlanked, "skip-blanked", false, `Option will keep side-effect blank imports ('_ "path"') sorted inline within their package-path group instead of separating them into a trailing sub-block. Optional parameter.`)
 	flag.BoolVar(&cfg.shouldApplyToGeneratedFiles, "apply-to-generated-files", false, `Apply imports sorting and formatting(if the option is set) to generated files. Generated file is a file with first comment which starts with comment '// Code generated'. Optional parameter.`)
 	flag.BoolVar(&cfg.shouldShowVersion, "version", false, `Show version information`)
 	flag.BoolVar(&cfg.shouldShowVersionOnly, "version-only", false, `Show only the version string`)
@@ -140,6 +142,9 @@ func Run(version VersionInfo) int {
 	}
 	if cfg.shouldSeparateNamedImports {
 		opts = append(opts, engine.WithSeparatedNamedImports)
+	}
+	if cfg.shouldSkipBlanked {
+		opts = append(opts, engine.WithSkipBlanked)
 	}
 	if !cfg.shouldApplyToGeneratedFiles {
 		opts = append(opts, engine.WithSkipGeneratedFile)
@@ -351,7 +356,7 @@ func defaultCacheDir() (string, error) {
 
 func formatterCacheFingerprint(cfg *Config, projectName string) string {
 	return fmt.Sprintf(
-		"v2|project=%s|imports-order=%s|company-prefixes=%s|rm-unused=%t|set-alias=%t|format=%t|separate-named=%t|apply-generated=%t",
+		"v3|project=%s|imports-order=%s|company-prefixes=%s|rm-unused=%t|set-alias=%t|format=%t|separate-named=%t|skip-blanked=%t|apply-generated=%t",
 		projectName,
 		cfg.importsOrder,
 		cfg.companyPkgPrefixes,
@@ -359,6 +364,7 @@ func formatterCacheFingerprint(cfg *Config, projectName string) string {
 		cfg.shouldSetAlias,
 		cfg.shouldFormat,
 		cfg.shouldSeparateNamedImports,
+		cfg.shouldSkipBlanked,
 		cfg.shouldApplyToGeneratedFiles,
 	)
 }
